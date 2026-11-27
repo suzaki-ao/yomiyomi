@@ -127,7 +127,7 @@
         </div>
         <div class="hidden xl:block">
           <h1 class="font-round font-extrabold text-base text-slate-800 leading-tight">読み読み</h1>
-          <p class="text-[11px] text-slate-500">LD学習・読み上げ支援ソフト</p>
+          <p class="text-[11px] text-slate-500">LD学習・読み上げ支援</p>
         </div>
       </div>
 
@@ -209,6 +209,17 @@
       <button type="button" data-ruler="off" class="ruler-btn px-2.5 py-1 rounded-lg border-2 border-purple-600 bg-white font-bold text-slate-800">OFF</button>
       <button type="button" data-ruler="horizontal" class="ruler-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-purple-100 font-bold text-slate-800">横ライン</button>
       <button type="button" data-ruler="vertical" class="ruler-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-purple-100 font-bold text-slate-800">縦ライン</button>
+    </div>
+
+    <!-- 英語音声＆なぞり即読み上げ設定 -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <label class="flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-purple-300 text-xs font-bold text-purple-950">
+        <input type="checkbox" id="chkAutoSpeakOnSelect" checked class="rounded text-blue-600">
+        <span>なぞったらすぐ読む</span>
+      </label>
+      <select id="englishVoiceSelect" class="bg-white border border-purple-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 max-w-[170px]" title="英語ネイティブ音声の選択">
+        <option value="">自動（ネイティブ優先）</option>
+      </select>
     </div>
 
     <!-- 全ページ文字方向の一括切替＆再解析 -->
@@ -343,6 +354,8 @@
             <div id="primaryTintLayer" class="absolute inset-0 pointer-events-none transition-colors duration-200"></div>
             <!-- テキスト・数式注釈レイヤー -->
             <div id="primaryAnnotationLayer" class="absolute inset-0 overflow-hidden"></div>
+            <!-- iPad風選択ハンドル＆フローティングメニューレイヤー -->
+            <div id="primarySelectionUILayer" class="absolute inset-0 pointer-events-none z-30"></div>
           </div>
         </div>
       </section>
@@ -361,6 +374,12 @@
               <span>🔊</span>
               <span>全部よむ</span>
             </button>
+            <!-- ピン止め画面専用のズーム調整 -->
+            <div class="flex items-center bg-white rounded-lg border border-amber-300 px-1">
+              <button id="btnPinnedZoomOut" type="button" class="px-2 py-0.5 font-bold text-amber-950 hover:bg-amber-100 rounded" title="ピン止め画面を縮小">－</button>
+              <span id="pinnedZoomDisplay" class="text-xs font-mono font-bold px-1.5 text-amber-950">100%</span>
+              <button id="btnPinnedZoomIn" type="button" class="px-2 py-0.5 font-bold text-amber-950 hover:bg-amber-100 rounded" title="ピン止め画面を拡大">＋</button>
+            </div>
             <button id="btnCloseSplitPane" type="button" class="px-2 py-1 rounded-lg bg-white hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold">
               ✕ とじる
             </button>
@@ -379,6 +398,8 @@
             <canvas id="pinnedOverlayCanvas" class="absolute inset-0 pointer-events-none"></canvas>
             <div id="pinnedTintLayer" class="absolute inset-0 pointer-events-none transition-colors duration-200"></div>
             <div id="pinnedAnnotationLayer" class="absolute inset-0 overflow-hidden"></div>
+            <!-- iPad風選択ハンドル＆フローティングメニューレイヤー -->
+            <div id="pinnedSelectionUILayer" class="absolute inset-0 pointer-events-none z-30"></div>
           </div>
         </div>
       </section>
@@ -578,7 +599,13 @@
       <!-- 読み上げテキスト表示・編集ボックス（大きく見やすいUDフォント） -->
       <div class="flex-1 flex items-center gap-2 bg-slate-800 border border-slate-600 rounded-xl px-3 py-1.5">
         <span id="ttsStatusDot" class="w-3 h-3 rounded-full bg-slate-500 shrink-0"></span>
-        <input id="spokenTextBox" type="text" class="w-full bg-transparent text-white font-ud text-sm sm:text-base focus:outline-none" placeholder="プリントの文字をドラッグして囲むと、ここに文字が出て自動で読み上げます">
+        <select id="speechLangMode" class="bg-slate-700 text-amber-300 text-xs font-bold rounded-lg px-2 py-1 border border-slate-600 focus:outline-none shrink-0" title="読み上げ言語モード">
+          <option value="bilingual">日英自動</option>
+          <option value="ja-JP">日本語</option>
+          <option value="en-US">英語(US)</option>
+          <option value="en-GB">英語(UK)</option>
+        </select>
+        <input id="spokenTextBox" type="text" class="w-full bg-transparent text-white font-ud text-sm sm:text-base focus:outline-none" placeholder="プリントの文字をiPadのように青くなぞると、ここに文字が出て自動で読み上げます">
       </div>
 
       <!-- 読み上げ速度調整スライダー -->
@@ -715,23 +742,15 @@
       pinnedPageIndex: null,
       isSplitPinOpen: false,
       sidebarTab: 'all', // 'all' | 'pinned'
-      zoom: 1.0,
+      primaryZoom: 1.0,
+      pinnedZoom: 1.0,
       orientation: 'horizontal', // 'horizontal' | 'vertical'
       toolMode: 'read', // 'read' | 'text' | 'math'
       tintColor: 'none',
       rulerMode: 'off', // 'off' | 'horizontal' | 'vertical'
       speechRate: 1.0,
       lastSpokenText: '',
-      selectedAnnotationId: null,
-      textOptions: {
-        color: '#0f172a',
-        bg: 'transparent',
-        size: 22
-      },
-      // 数式ビルダーのトークン配列
-      mathTokens: [],
-      editingMathTokenIndex: null,
-      // Tesseract ワーカーキャッシュ
+      // OCRキャッシュ
       ocrWorkers: {
         horizontal: null,
         vertical: null
@@ -739,26 +758,57 @@
       batchOcrAbortId: 0,
       // カメラストリーム
       cameraStream: null,
-      cameraFacingMode: 'environment'
+      cameraFacingMode: 'environment',
+      // iPad風テキスト選択状態（ペインごと）
+      selectionState: {
+        primary: { pageIdx: null, selectedIndices: [], rawText: '', speakingWordIdx: -1 },
+        pinned: { pageIdx: null, selectedIndices: [], rawText: '', speakingWordIdx: -1 }
+      },
+      // 音声設定
+      speechLangMode: 'bilingual', // 'bilingual' | 'en-US' | 'en-GB' | 'ja-JP'
+      preferredEnglishVoiceURI: '',
+      speechRunId: 0,
+      karaokeFallbackTimer: null,
+      // テキスト注釈スタイル＆数式ビルダー状態
+      textOptions: {
+        color: '#0f172a',
+        bg: 'transparent'
+      },
+      mathTokens: [],
+      editingMathTokenIndex: null,
+      selectedAnnotationId: null
     };
 
     // DOMショートカット
     const $ = (id) => document.getElementById(id);
 
-    /**
-     * =========================================================================
-     * 2. トースト通知 & UIヘルパー
-     * =========================================================================
-     */
+    // トースト通知表示関数
     let toastTimer = null;
-    function showToast(message) {
-      const el = $('toastBanner');
-      el.textContent = message;
-      el.classList.remove('opacity-0');
-      clearTimeout(toastTimer);
+    function showToast(msg, duration = 2600) {
+      const banner = $('toastBanner');
+      if (!banner) return;
+      banner.textContent = msg;
+      banner.classList.remove('opacity-0');
+      banner.classList.add('opacity-100');
+      if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
-        el.classList.add('opacity-0');
-      }, 2600);
+        banner.classList.remove('opacity-100');
+        banner.classList.add('opacity-0');
+      }, duration);
+    }
+
+    function activateWorkspaceUI() {
+      $('welcomeScreen').classList.add('hidden');
+      $('primaryPane').classList.remove('hidden');
+      $('primaryPane').classList.add('flex');
+      $('pageSidebar').classList.remove('hidden');
+      $('pageSidebar').classList.add('flex');
+      $('toolModeGroup').classList.remove('hidden');
+      $('toolModeGroup').classList.add('flex');
+      $('rightControls').classList.remove('hidden');
+      $('rightControls').classList.add('flex');
+      $('btnAppendFileWrapper').classList.remove('hidden');
+      $('btnAppendFileWrapper').classList.add('flex');
     }
 
     function generateId() {
@@ -871,43 +921,37 @@
           appState.pinnedPageIndex = null;
           appState.isSplitPinOpen = false;
           // 初期表示ズームを画面幅に合わせる
-          const containerW = $('mainWorkspace').clientWidth - 220;
+          const containerW = Math.max(320, $('mainWorkspace').clientWidth - 220);
           const firstW = newPages[0].width;
-          appState.zoom = Math.max(0.4, Math.min(1.0, Math.round(((containerW > 320 ? containerW : 680) / firstW) * 100) / 100));
+          const initialZoom = Math.max(0.45, Math.min(1.0, Math.round((containerW / firstW) * 100) / 100));
+          appState.primaryZoom = initialZoom;
+          appState.pinnedZoom = initialZoom;
         }
 
         activateWorkspaceUI();
         renderAllViews();
-
-        // 必ず「横書き・縦書き・自動判定」選択モーダルを表示
         $('orientationModal').classList.remove('hidden');
       } catch (err) {
-        console.error(err);
-        showToast('読み込みに失敗しました');
+        console.error('File load error:', err);
+        showToast('ファイルの読み込み中にエラーが発生しました');
       }
     }
 
-    function activateWorkspaceUI() {
-      $('welcomeScreen').classList.add('hidden');
-      $('primaryPane').classList.remove('hidden');
-      $('pageSidebar').classList.remove('hidden');
-      $('pageSidebar').classList.add('flex');
-      $('toolModeGroup').classList.remove('hidden');
-      $('toolModeGroup').classList.add('flex');
-      $('rightControls').classList.remove('hidden');
-      $('rightControls').classList.add('flex');
-      $('btnAppendFileWrapper').classList.remove('hidden');
-      $('btnAppendFileWrapper').classList.add('flex');
-    }
+    ['fileInputNew', 'fileInputWelcome'].forEach(id => {
+      $(id).addEventListener('change', (e) => {
+        loadNewDocument(e.target.files, false);
+        e.target.value = '';
+      });
+    });
 
-    // ファイル入力リスナー
-    $('fileInputNew').addEventListener('change', (e) => { loadNewDocument(e.target.files, false); e.target.value = ''; });
-    $('fileInputWelcome').addEventListener('change', (e) => { loadNewDocument(e.target.files, false); e.target.value = ''; });
-    $('fileInputAppend').addEventListener('change', (e) => { loadNewDocument(e.target.files, true); e.target.value = ''; });
+    $('fileInputAppend').addEventListener('change', (e) => {
+      loadNewDocument(e.target.files, true);
+      e.target.value = '';
+    });
 
-    // さんすう・国語 2ページサンプルワークシート生成
+    // さんすう・英語・国語 3ページサンプルワークシート生成
     $('btnLoadDemoWorksheet').addEventListener('click', () => {
-      // 1ページ目：横書き（さんすうプリント）
+      // 1ページ目：算数・数学（分数・累乗・ルート・方程式）
       const c1 = document.createElement('canvas');
       c1.width = 1000;
       c1.height = 1350;
@@ -920,31 +964,32 @@
 
       ctx1.fillStyle = '#1e293b';
       ctx1.font = 'bold 34px "BIZ UDPGothic", sans-serif';
-      ctx1.fillText('さんすう れんしゅうプリント（4年生）', 80, 110);
+      ctx1.fillText('さんすう・数学 読み上げテストプリント', 80, 110);
 
       ctx1.font = '26px "BIZ UDPGothic", sans-serif';
       const p1Lines = [
-        '【もんだい 1】 つぎの ぶんしょうを よく 読んで こたえましょう。',
-        'たろうくんは ジュースを 2分の1 リットル もっています。',
-        'いもうとは 4分の1 リットル もっています。',
-        'ふたり 合わせると なんリットルに なりますか。',
+        '【もんだい 1】 分数と 計算の しきを なぞって 聞いてみよう！',
+        '1/2 + 3/4 = 5/4',
+        '2 1/3 - 1/3 = 2',
+        '12 × 3 ÷ 4 = 9',
         '',
-        '【ヒント】 上の「かんたん数式」ボタンを おすと、',
-        '分数の しきや こたえを かんたんに かきこめます！'
+        '【もんだい 2】 中学数学の しき・ルート・図形も 読めます！',
+        '3x + 5 = 20',
+        'x² + 2x + 1 = (x + 1)²',
+        '√16 = 4 , ∠ABC = 90° , △ABC ∽ △DEF'
       ];
       p1Lines.forEach((line, i) => {
-        ctx1.fillText(line, 80, 190 + i * 54);
+        ctx1.fillText(line, 80, 185 + i * 54);
       });
 
-      // 解答欄ボックス
       ctx1.strokeStyle = '#3b82f6';
       ctx1.lineWidth = 2;
-      ctx1.strokeRect(80, 600, 840, 220);
+      ctx1.strokeRect(80, 720, 840, 220);
       ctx1.fillStyle = '#64748b';
       ctx1.font = '22px "BIZ UDPGothic", sans-serif';
-      ctx1.fillText('（しき と こたえ を かく ばしょ）', 100, 640);
+      ctx1.fillText('（上の「かんたん数式」から分数やルートも貼り付けできます）', 100, 760);
 
-      // 2ページ目：縦書き（こくご ものがたり）
+      // 2ページ目：英語＆バイリンガル教科書サンプル
       const c2 = document.createElement('canvas');
       c2.width = 1000;
       c2.height = 1350;
@@ -955,31 +1000,63 @@
       ctx2.lineWidth = 3;
       ctx2.strokeRect(40, 40, 920, 1270);
 
-      const drawVert = (txt, x, y, step) => {
-        for (let i = 0; i < txt.length; i++) {
-          ctx2.fillText(txt[i], x, y + i * step);
-        }
-      };
       ctx2.fillStyle = '#0f172a';
       ctx2.font = 'bold 34px "BIZ UDPGothic", sans-serif';
+      ctx2.fillText('English Reading & Phonics (英語のれんしゅう)', 80, 110);
+
+      ctx2.font = '26px "BIZ UDPGothic", sans-serif';
+      const p2Lines = [
+        '次の英文を iPad のように 青くなぞって 聞いてみましょう。',
+        '',
+        'Hello! My name is Ken. I live in Nagoya.',
+        'I like reading books and playing soccer with my friends.',
+        'Every morning, I eat an apple and drink milk.',
+        '',
+        '【重要単語】',
+        'library（図書館） / science（理科） / wonderful（すばらしい）'
+      ];
+      p2Lines.forEach((line, i) => {
+        ctx2.fillText(line, 80, 190 + i * 54);
+      });
+
+      // 3ページ目：縦書き（こくご ものがたり）
+      const c3 = document.createElement('canvas');
+      c3.width = 1000;
+      c3.height = 1350;
+      const ctx3 = c3.getContext('2d', { willReadFrequently: true });
+      ctx3.fillStyle = '#ffffff';
+      ctx3.fillRect(0, 0, 1000, 1350);
+      ctx3.strokeStyle = '#94a3b8';
+      ctx3.lineWidth = 3;
+      ctx3.strokeRect(40, 40, 920, 1270);
+
+      const drawVert = (txt, x, y, step) => {
+        for (let i = 0; i < txt.length; i++) {
+          ctx3.fillText(txt[i], x, y + i * step);
+        }
+      };
+      ctx3.fillStyle = '#0f172a';
+      ctx3.font = 'bold 34px "BIZ UDPGothic", sans-serif';
       drawVert('こくごの ものがたり', 860, 110, 44);
 
-      ctx2.font = '28px "BIZ UDPGothic", sans-serif';
+      ctx3.font = '28px "BIZ UDPGothic", sans-serif';
       drawVert('むかしむかし、あるところに', 770, 110, 42);
       drawVert('やさしい きつねが すんでいました。', 705, 110, 42);
       drawVert('もりで まよった こりすを みつけると、', 640, 110, 42);
       drawVert('あたたかい おうちまで おくってあげました。', 575, 110, 42);
-      drawVert('ピン止めボタンを おすと、このページを', 470, 110, 42);
-      drawVert('よこに ならべたまま べつのページを 見られます。', 405, 110, 42);
+      drawVert('青いなぞり選択の 両端にある 丸いハンドルを', 470, 110, 42);
+      drawVert('動かすと、読む範囲を 自由に 調整できます。', 405, 110, 42);
 
       appState.pages = [
         { id: generateId(), baseCanvas: c1, width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] },
-        { id: generateId(), baseCanvas: c2, width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] }
+        { id: generateId(), baseCanvas: c2, width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] },
+        { id: generateId(), baseCanvas: c3, width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] }
       ];
       appState.currentPageIndex = 0;
       appState.pinnedPageIndex = null;
       appState.isSplitPinOpen = false;
-      appState.zoom = 0.65;
+      appState.primaryZoom = 0.65;
+      appState.pinnedZoom = 0.65;
 
       activateWorkspaceUI();
       renderAllViews();
@@ -988,15 +1065,15 @@
 
     /**
      * =========================================================================
-     * 4. 縦書き・横書き・自動判定 ＆ 全ページ一括高速・高精度OCRエンジン
+     * 4. 縦書き・横書き・自動判定 ＆ 全ページ一括高速・高精度OCRエンジン (日英対応)
      * =========================================================================
      */
-    // Tesseractワーカーの初期化・取得
+    // Tesseractワーカーの初期化・取得（英語＋日本語の同時高精度認識 jpn+eng / jpn_vert+eng）
     async function getTesseractWorker(orient) {
       if (appState.ocrWorkers[orient]) {
         return appState.ocrWorkers[orient];
       }
-      const lang = orient === 'vertical' ? 'jpn_vert' : 'jpn';
+      const lang = orient === 'vertical' ? 'jpn_vert+eng' : 'jpn+eng';
       const worker = await Tesseract.createWorker(lang, 1);
       await worker.setParameters({
         tessedit_pageseg_mode: orient === 'vertical' ? '5' : '6',
@@ -1105,16 +1182,16 @@
 
         if (currentBatchId !== appState.batchOcrAbortId) return;
 
-        // 単語・文字単位の座標(bbox)を抽出してキャッシュ
-        const words = (result.data.words || [])
-          .filter(w => w.text && w.text.trim().length > 0 && w.confidence > 25)
+        // 単語・文字単位の座標(bbox)を抽出し、読み順（横書き or 縦書き）にソートして保存
+        const rawWords = (result.data.words || [])
+          .filter(w => w.text && w.text.trim().length > 0 && w.confidence > 20)
           .map(w => ({
             text: w.text.trim(),
             bbox: w.bbox,
             confidence: w.confidence
           }));
 
-        pageObj.ocrWords = words;
+        pageObj.ocrWords = sortWordsByReadingOrder(rawWords, resolvedOrient);
         pageObj.ocrDone = true;
 
         $('batchOcrProgressBar').style.width = `${Math.round(((i + 1) / total) * 100)}%`;
@@ -1127,9 +1204,49 @@
       setTimeout(() => {
         if (currentBatchId === appState.batchOcrAbortId) {
           $('batchOcrBanner').classList.add('hidden');
-          showToast('全ページの文字認識が完了しました！囲むだけですぐ読めます');
+          showToast('全ページの文字認識が完了！iPadのように青くなぞってすぐ読めます');
         }
       }, 600);
+    }
+
+    // 単語配列を自然な読み順（横書き: 上→下, 左→右 / 縦書き: 右→左, 上→下）へ整列
+    function sortWordsByReadingOrder(words, orientation) {
+      const cloned = [...words];
+      if (orientation === 'vertical') {
+        cloned.sort((a, b) => {
+          const colDiff = b.bbox.x0 - a.bbox.x0;
+          if (Math.abs(colDiff) > 26) return colDiff;
+          return a.bbox.y0 - b.bbox.y0;
+        });
+      } else {
+        cloned.sort((a, b) => {
+          const rowDiff = a.bbox.y0 - b.bbox.y0;
+          if (Math.abs(rowDiff) > 24) return rowDiff;
+          return a.bbox.x0 - b.bbox.x0;
+        });
+      }
+      return cloned;
+    }
+
+    // 選択された単語群を自然なスペース規則（英単語間は半角スペース、日本語間は詰める）で結合
+    function joinWordsNaturally(words) {
+      let out = '';
+      for (let i = 0; i < words.length; i++) {
+        const cur = words[i].text;
+        if (i === 0) {
+          out += cur;
+          continue;
+        }
+        const prev = words[i - 1].text;
+        const prevIsAscii = /[A-Za-z0-9.,!?;:)'"%°]$/.test(prev);
+        const curIsAscii = /^[A-Za-z0-9($+\-−×÷=<>]/.test(cur);
+        if (prevIsAscii && curIsAscii) {
+          out += ' ' + cur;
+        } else {
+          out += cur;
+        }
+      }
+      return out;
     }
 
     // 向き選択モーダルのボタンイベント
@@ -1224,7 +1341,8 @@
         appState.currentPageIndex = 0;
         appState.pinnedPageIndex = null;
         appState.isSplitPinOpen = false;
-        appState.zoom = 0.65;
+        appState.primaryZoom = 0.65;
+        appState.pinnedZoom = 0.65;
       }
 
       activateWorkspaceUI();
@@ -1245,6 +1363,67 @@
      * 6. ビュー描画・サムネイル一覧・ピン止め機能
      * =========================================================================
      */
+    function renderSidebarThumbnails() {
+      const list = $('thumbnailList');
+      if (!list) return;
+      list.innerHTML = '';
+
+      const isPinnedTab = appState.sidebarTab === 'pinned';
+      let count = 0;
+
+      appState.pages.forEach((p, idx) => {
+        if (isPinnedTab && !p.pinned) return;
+        count++;
+
+        const card = document.createElement('div');
+        const isCurrent = idx === appState.currentPageIndex;
+        card.className = `cursor-pointer p-2 rounded-xl border-2 transition flex items-center gap-2 bg-white ${
+          isCurrent ? 'border-blue-600 shadow-md ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-300'
+        }`;
+
+        const thumbCanvas = document.createElement('canvas');
+        const thumbW = 54;
+        const thumbH = Math.round(54 * (p.height / p.width));
+        thumbCanvas.width = thumbW;
+        thumbCanvas.height = thumbH;
+        thumbCanvas.className = 'rounded border border-slate-200 shadow-sm shrink-0 bg-white';
+        const tCtx = thumbCanvas.getContext('2d', { willReadFrequently: true });
+        tCtx.drawImage(p.baseCanvas, 0, 0, thumbW, thumbH);
+
+        const info = document.createElement('div');
+        info.className = 'flex-1 min-w-0';
+        info.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800 truncate">${idx + 1}ページ</span>
+            <span class="text-[10px] ${p.ocrDone ? 'text-emerald-600 font-bold' : 'text-slate-400'}">${p.ocrDone ? '解析済' : '未'}</span>
+          </div>
+          <div class="flex items-center justify-between mt-1">
+            <button type="button" class="pin-btn text-xs hover:scale-110 transition ${p.pinned ? 'text-amber-500 font-bold' : 'text-slate-300'}" title="ピン止め">📌</button>
+            <span class="text-[10px] text-slate-400 font-mono">${p.annotations.length > 0 ? `✏️${p.annotations.length}` : ''}</span>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          appState.currentPageIndex = idx;
+          renderAllViews();
+        });
+
+        const pinBtn = info.querySelector('.pin-btn');
+        if (pinBtn) {
+          pinBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePinPage(idx);
+          });
+        }
+
+        card.appendChild(thumbCanvas);
+        card.appendChild(info);
+        list.appendChild(card);
+      });
+
+      $('totalPagesBadge').textContent = `${appState.pages.length}枚`;
+    }
+
     function renderAllViews() {
       renderSidebarThumbnails();
       renderStagePane('primary', appState.currentPageIndex);
@@ -1272,7 +1451,10 @@
       $('primaryTotalPages').textContent = total;
       $('btnPrevPage').disabled = cur <= 0;
       $('btnNextPage').disabled = cur >= total - 1;
-      $('zoomDisplay').textContent = `${Math.round(appState.zoom * 100)}%`;
+      $('zoomDisplay').textContent = `${Math.round(appState.primaryZoom * 100)}%`;
+      if ($('pinnedZoomDisplay')) {
+        $('pinnedZoomDisplay').textContent = `${Math.round(appState.pinnedZoom * 100)}%`;
+      }
 
       const curPage = appState.pages[cur];
       if (curPage) {
@@ -1300,8 +1482,9 @@
       const overlayCanvas = $(`${paneType}OverlayCanvas`);
       const tintLayer = $(`${paneType}TintLayer`);
 
-      const displayW = Math.round(pageObj.width * appState.zoom);
-      const displayH = Math.round(pageObj.height * appState.zoom);
+      const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+      const displayW = Math.round(pageObj.width * paneZoom);
+      const displayH = Math.round(pageObj.height * paneZoom);
 
       stage.style.width = `${displayW}px`;
       stage.style.height = `${displayH}px`;
@@ -1321,87 +1504,385 @@
 
       drawOcrWordGuidesForPane(paneType, pageIdx);
       renderAnnotationsForPane(paneType, pageIdx);
+      renderSelectionHandlesAndPopover(paneType);
     }
 
-    // 認識済み文字ブロックのうっすらガイド枠を描画（どこが読めるか視覚的にわかる）
-    function drawOcrWordGuidesForPane(paneType, pageIdx, highlightBoxes = []) {
+    // 単語配列を「行（横書き）」または「列（縦書き）」のグループにまとめる
+    function groupWordsIntoLines(words, isVert) {
+      const lines = [];
+      words.forEach((word, idx) => {
+        if (!word) return;
+        const { x0, y0, x1, y1 } = word.bbox;
+        const cx = (x0 + x1) / 2;
+        const cy = (y0 + y1) / 2;
+        let targetLine = null;
+
+        for (const line of lines) {
+          if (isVert) {
+            if (Math.abs(cx - line.centerCoord) < Math.max(26, line.maxSpan * 0.65)) {
+              targetLine = line;
+              break;
+            }
+          } else {
+            if (Math.abs(cy - line.centerCoord) < Math.max(24, line.maxSpan * 0.65)) {
+              targetLine = line;
+              break;
+            }
+          }
+        }
+
+        if (!targetLine) {
+          targetLine = {
+            items: [],
+            minX: x0,
+            minY: y0,
+            maxX: x1,
+            maxY: y1,
+            centerCoord: isVert ? cx : cy,
+            maxSpan: isVert ? (x1 - x0) : (y1 - y0)
+          };
+          lines.push(targetLine);
+        }
+
+        targetLine.items.push({ word, idx });
+        targetLine.minX = Math.min(targetLine.minX, x0);
+        targetLine.minY = Math.min(targetLine.minY, y0);
+        targetLine.maxX = Math.max(targetLine.maxX, x1);
+        targetLine.maxY = Math.max(targetLine.maxY, y1);
+        targetLine.maxSpan = Math.max(targetLine.maxSpan, isVert ? (x1 - x0) : (y1 - y0));
+      });
+      return lines;
+    }
+
+    // 選択された単語群を行/段落ごとの統一サイズ（行内の最大文字高さ/幅）でグループ化
+    function buildUnifiedLineSelectionBoxes(pageObj, selectedIndices, isVert) {
+      const allLines = groupWordsIntoLines(pageObj.ocrWords, isVert);
+      const selectedSet = new Set(selectedIndices);
+      const resultBoxes = [];
+
+      // 選択された全行の中で最大の高さ（縦書きなら幅）を計算し、段落内で一番大きい文字サイズに統一
+      let paragraphMaxCross = 0;
+      allLines.forEach(line => {
+        const hasSel = line.items.some(it => selectedSet.has(it.idx));
+        if (hasSel) {
+          const cross = isVert ? (line.maxX - line.minX) : (line.maxY - line.minY);
+          paragraphMaxCross = Math.max(paragraphMaxCross, cross);
+        }
+      });
+
+      allLines.forEach(line => {
+        const chosen = line.items.filter(it => selectedSet.has(it.idx));
+        if (chosen.length === 0) return;
+
+        let segMinX = Infinity, segMinY = Infinity, segMaxX = -Infinity, segMaxY = -Infinity;
+        chosen.forEach(({ word }) => {
+          segMinX = Math.min(segMinX, word.bbox.x0);
+          segMinY = Math.min(segMinY, word.bbox.y0);
+          segMaxX = Math.max(segMaxX, word.bbox.x1);
+          segMaxY = Math.max(segMaxY, word.bbox.y1);
+        });
+
+        if (isVert) {
+          const lineCenterX = (line.minX + line.maxX) / 2;
+          const unifiedW = Math.max(paragraphMaxCross, line.maxX - line.minX);
+          resultBoxes.push({
+            x0: lineCenterX - unifiedW / 2,
+            y0: segMinY,
+            x1: lineCenterX + unifiedW / 2,
+            y1: segMaxY
+          });
+        } else {
+          const lineCenterY = (line.minY + line.maxY) / 2;
+          const unifiedH = Math.max(paragraphMaxCross, line.maxY - line.minY);
+          resultBoxes.push({
+            x0: segMinX,
+            y0: lineCenterY - unifiedH / 2,
+            x1: segMaxX,
+            y1: lineCenterY + unifiedH / 2
+          });
+        }
+      });
+
+      return resultBoxes;
+    }
+
+    // 認識済み文字ブロックのガイド枠 ＋ 統一サイズ青色選択ハイライト ＋ ライブカラオケハイライト
+    function drawOcrWordGuidesForPane(paneType, pageIdx) {
       const pageObj = appState.pages[pageIdx];
       const overlayCanvas = $(`${paneType}OverlayCanvas`);
       if (!pageObj || !overlayCanvas) return;
       const ctx = overlayCanvas.getContext('2d');
       ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-      // 認識済み単語の薄いアンダーライン/枠
+      const isVert = appState.orientation === 'vertical';
+
+      // 1. 認識済み単語のうっすらガイド（どこがなぞれるか視覚的に案内）
       if (pageObj.ocrDone && pageObj.ocrWords.length > 0) {
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.06)';
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.04)';
         pageObj.ocrWords.forEach(w => {
           const { x0, y0, x1, y1 } = w.bbox;
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         });
       }
 
-      // 読み上げ中ハイライトボックス（カラオケ強調）
-      if (highlightBoxes.length > 0) {
-        ctx.fillStyle = 'rgba(250, 204, 21, 0.42)';
-        ctx.strokeStyle = '#eab308';
-        ctx.lineWidth = 3;
-        highlightBoxes.forEach(b => {
-          ctx.fillRect(b.x0 - 2, b.y0 - 2, (b.x1 - b.x0) + 4, (b.y1 - b.y0) + 4);
-          ctx.strokeRect(b.x0 - 2, b.y0 - 2, (b.x1 - b.x0) + 4, (b.y1 - b.y0) + 4);
+      // 2. 行・段落で一番大きい文字サイズに揃えた統一サイズの青色選択ハイライト
+      const sel = appState.selectionState[paneType];
+      if (sel && sel.pageIdx === pageIdx && sel.selectedIndices.length > 0) {
+        const unifiedBoxes = buildUnifiedLineSelectionBoxes(pageObj, sel.selectedIndices, isVert);
+        const padX = 5;
+        const padY = 4;
+
+        unifiedBoxes.forEach(box => {
+          ctx.fillStyle = 'rgba(0, 122, 255, 0.24)';
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(box.x0 - padX, box.y0 - padY, (box.x1 - box.x0) + padX * 2, (box.y1 - box.y0) + padY * 2, 6);
+          } else {
+            ctx.rect(box.x0 - padX, box.y0 - padY, (box.x1 - box.x0) + padX * 2, (box.y1 - box.y0) + padY * 2);
+          }
+          ctx.fill();
         });
+
+        // 3. 読み上げ中の単語に追従する鮮やかな黄色カラオケハイライト
+        if (sel.speakingWordIdx >= 0 && sel.speakingWordIdx < sel.selectedIndices.length) {
+          const activeWordIdx = sel.selectedIndices[sel.speakingWordIdx];
+          const activeWord = pageObj.ocrWords[activeWordIdx];
+          if (activeWord) {
+            // 所属する統一ボックスの高さ/幅に合わせて黄色ハイライトも揃える
+            const matchedBox = unifiedBoxes.find(b =>
+              activeWord.bbox.x0 >= b.x0 - 8 && activeWord.bbox.x1 <= b.x1 + 8 &&
+              activeWord.bbox.y0 >= b.y0 - 8 && activeWord.bbox.y1 <= b.y1 + 8
+            );
+            const hx0 = (isVert && matchedBox ? matchedBox.x0 : activeWord.bbox.x0) - padX;
+            const hy0 = (!isVert && matchedBox ? matchedBox.y0 : activeWord.bbox.y0) - padY;
+            const hx1 = (isVert && matchedBox ? matchedBox.x1 : activeWord.bbox.x1) + padX;
+            const hy1 = (!isVert && matchedBox ? matchedBox.y1 : activeWord.bbox.y1) + padY;
+
+            ctx.fillStyle = 'rgba(250, 204, 21, 0.68)';
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(hx0, hy0, hx1 - hx0, hy1 - hy0, 6);
+            } else {
+              ctx.rect(hx0, hy0, hx1 - hx0, hy1 - hy0);
+            }
+            ctx.fill();
+
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+        }
       }
     }
 
     function drawOcrWordGuides() {
       drawOcrWordGuidesForPane('primary', appState.currentPageIndex);
+      renderSelectionHandlesAndPopover('primary');
       if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
         drawOcrWordGuidesForPane('pinned', appState.pinnedPageIndex);
+        renderSelectionHandlesAndPopover('pinned');
       }
     }
 
-    // 左サイドバーサムネイル描画
-    function renderSidebarThumbnails() {
-      const list = $('thumbnailList');
-      list.innerHTML = '';
-      $('totalPagesBadge').textContent = `${appState.pages.length}枚`;
+    // iPad風選択ハンドル＆フローティングメニュー描画
+    function renderSelectionHandlesAndPopover(paneType) {
+      const uiLayer = $(`${paneType}SelectionUILayer`);
+      if (!uiLayer) return;
+      uiLayer.innerHTML = '';
 
-      appState.pages.forEach((p, idx) => {
-        if (appState.sidebarTab === 'pinned' && !p.pinned) return;
+      const pageIdx = paneType === 'primary' ? appState.currentPageIndex : appState.pinnedPageIndex;
+      const pageObj = appState.pages[pageIdx];
+      const sel = appState.selectionState[paneType];
+      if (!pageObj || !sel || sel.pageIdx !== pageIdx || sel.selectedIndices.length === 0) return;
 
-        const card = document.createElement('div');
-        const isCurrent = idx === appState.currentPageIndex;
-        card.className = `relative rounded-xl border-2 p-1.5 cursor-pointer transition bg-white ${isCurrent ? 'border-blue-600 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-400'}`;
+      const firstWord = pageObj.ocrWords[sel.selectedIndices[0]];
+      const lastWord = pageObj.ocrWords[sel.selectedIndices[sel.selectedIndices.length - 1]];
+      if (!firstWord || !lastWord) return;
 
-        // サムネイル画像
-        const thumbCanvas = document.createElement('canvas');
-        const ratio = 120 / p.width;
-        thumbCanvas.width = 120;
-        thumbCanvas.height = Math.round(p.height * ratio);
-        thumbCanvas.className = 'w-full h-auto rounded border border-slate-100 block';
-        thumbCanvas.getContext('2d').drawImage(p.baseCanvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+      const zoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+      const isVert = appState.orientation === 'vertical';
 
-        // 下部ラベル＋ピン止めトグル
-        const footer = document.createElement('div');
-        footer.className = 'flex items-center justify-between mt-1.5 px-0.5';
-        footer.innerHTML = `
-          <span class="text-xs font-extrabold text-slate-700">${idx + 1}ページ ${p.ocrDone ? '<span class="text-emerald-600">✓</span>' : ''}</span>
-          <button type="button" class="pin-mini-btn text-xs px-1.5 py-0.5 rounded ${p.pinned ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-100 text-slate-500 hover:bg-amber-100'}" title="ピン止め切替">📌</button>
-        `;
-
-        footer.querySelector('.pin-mini-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          togglePinPage(idx);
-        });
-
-        card.addEventListener('click', () => {
-          appState.currentPageIndex = idx;
-          renderAllViews();
-        });
-
-        card.appendChild(thumbCanvas);
-        card.appendChild(footer);
-        list.appendChild(card);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      sel.selectedIndices.forEach(idx => {
+        const w = pageObj.ocrWords[idx];
+        if (!w) return;
+        minX = Math.min(minX, w.bbox.x0 * zoom);
+        minY = Math.min(minY, w.bbox.y0 * zoom);
+        maxX = Math.max(maxX, w.bbox.x1 * zoom);
+        maxY = Math.max(maxY, w.bbox.y1 * zoom);
       });
+
+      const startHandle = createSelectionHandleElement(
+        paneType,
+        'start',
+        isVert ? firstWord.bbox.x0 * zoom : firstWord.bbox.x0 * zoom,
+        isVert ? firstWord.bbox.y0 * zoom : firstWord.bbox.y0 * zoom,
+        isVert ? (firstWord.bbox.x1 - firstWord.bbox.x0) * zoom : (firstWord.bbox.y1 - firstWord.bbox.y0) * zoom,
+        isVert
+      );
+      uiLayer.appendChild(startHandle);
+
+      const endHandle = createSelectionHandleElement(
+        paneType,
+        'end',
+        isVert ? lastWord.bbox.x0 * zoom : lastWord.bbox.x1 * zoom,
+        isVert ? lastWord.bbox.y1 * zoom : lastWord.bbox.y0 * zoom,
+        isVert ? (lastWord.bbox.x1 - lastWord.bbox.x0) * zoom : (lastWord.bbox.y1 - lastWord.bbox.y0) * zoom,
+        isVert
+      );
+      uiLayer.appendChild(endHandle);
+
+      const pop = document.createElement('div');
+      pop.className = 'ipad-popover pointer-events-auto absolute bg-slate-900/95 backdrop-blur text-white rounded-2xl shadow-2xl border border-slate-700 px-1.5 py-1 flex items-center gap-1 whitespace-nowrap z-40';
+
+      const stageW = pageObj.width * zoom;
+      const centerX = Math.max(210, Math.min(stageW - 210, (minX + maxX) / 2));
+      const placeBelow = minY < 56;
+      pop.style.left = `${centerX}px`;
+      pop.style.top = placeBelow ? `${maxY + 14}px` : `${Math.max(6, minY - 48)}px`;
+      pop.style.transform = 'translateX(-50%)';
+
+      pop.innerHTML = `
+        <button type="button" data-act="speak" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold flex items-center gap-1 transition">
+          <span>▶</span><span>読み上げ</span>
+        </button>
+        <button type="button" data-act="sentence" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-emerald-300 text-xs font-bold flex items-center gap-0.5 transition" title="文章の「。」やピリオドまで一括選択">
+          <span>。まで</span>
+        </button>
+        <button type="button" data-act="paragraph" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-purple-300 text-xs font-bold flex items-center gap-0.5 transition" title="この段落全体をまとめて選択">
+          <span>段落</span>
+        </button>
+        <button type="button" data-act="slow" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1 transition" title="0.7倍速でゆっくり読み上げ">
+          <span>🐢</span><span class="hidden md:inline">ゆっくり</span>
+        </button>
+        <button type="button" data-act="english" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-sky-300 text-xs font-bold flex items-center gap-1 transition" title="英語ネイティブ発音で読み上げ">
+          <span>🇺🇸</span>
+        </button>
+        <button type="button" data-act="copy" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-slate-200 text-xs font-bold transition" title="コピー">
+          📋
+        </button>
+        <button type="button" data-act="clear" class="px-2 py-1.5 rounded-xl hover:bg-rose-600 text-slate-300 hover:text-white text-xs font-bold transition" title="選択解除">
+          ✕
+        </button>
+      `;
+
+      pop.addEventListener('mousedown', (e) => e.stopPropagation());
+      pop.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+
+      pop.querySelector('[data-act="speak"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType);
+      });
+      pop.querySelector('[data-act="sentence"]').addEventListener('click', () => {
+        expandSelectionToSentenceEnd(paneType, pageIdx);
+      });
+      pop.querySelector('[data-act="paragraph"]').addEventListener('click', () => {
+        expandSelectionToParagraph(paneType, pageIdx);
+      });
+      pop.querySelector('[data-act="slow"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType, { overrideRate: 0.7 });
+      });
+      pop.querySelector('[data-act="english"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType, { forceLang: 'en-US' });
+      });
+      pop.querySelector('[data-act="copy"]').addEventListener('click', () => {
+        const ta = document.createElement('textarea');
+        ta.value = sel.rawText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('選択した文字をコピーしました');
+      });
+      pop.querySelector('[data-act="clear"]').addEventListener('click', () => {
+        stopSpeech();
+        clearSelectionForPane(paneType);
+      });
+
+      uiLayer.appendChild(pop);
+    }
+
+    // 便利範囲選択①：選択開始位置（または文頭）から「。」「．」「！」「？」「.」「!」「?」まで選択
+    function expandSelectionToSentenceEnd(paneType, pageIdx) {
+      const pageObj = appState.pages[pageIdx];
+      const sel = appState.selectionState[paneType];
+      if (!pageObj || !sel || sel.selectedIndices.length === 0) return;
+
+      const words = pageObj.ocrWords;
+      const curFirst = sel.selectedIndices[0];
+      const curLast = sel.selectedIndices[sel.selectedIndices.length - 1];
+      const endPunctRegex = /[。．！？.!?]$/;
+
+      // 1. 開始位置より前にある直近の文末の次の単語（文頭）を探す
+      let sentenceStart = curFirst;
+      for (let i = curFirst - 1; i >= 0; i--) {
+        if (endPunctRegex.test(words[i].text)) {
+          sentenceStart = i + 1;
+          break;
+        }
+        if (i === 0) sentenceStart = 0;
+      }
+
+      // 2. 現在の選択位置から後方へ「。」またはピリオド等の文末を探す
+      let sentenceEnd = curLast;
+      for (let i = curFirst; i < words.length; i++) {
+        sentenceEnd = i;
+        if (endPunctRegex.test(words[i].text)) {
+          break;
+        }
+      }
+
+      const range = [];
+      for (let i = sentenceStart; i <= sentenceEnd; i++) range.push(i);
+      applyWordSelection(paneType, pageIdx, range, true);
+      showToast('文章の「。」まで選択しました');
+    }
+
+    // 便利範囲選択②：行間・列間の余白ギャップを解析して「段落全体」を一括選択
+    function expandSelectionToParagraph(paneType, pageIdx) {
+      const pageObj = appState.pages[pageIdx];
+      const sel = appState.selectionState[paneType];
+      if (!pageObj || !sel || sel.selectedIndices.length === 0) return;
+
+      const isVert = appState.orientation === 'vertical';
+      const lines = groupWordsIntoLines(pageObj.ocrWords, isVert);
+      if (lines.length === 0) return;
+
+      // 読み順（横書きなら上から下、縦書きなら右から左）にソート
+      lines.sort((a, b) => isVert ? (b.centerCoord - a.centerCoord) : (a.centerCoord - b.centerCoord));
+
+      const anchorIdx = sel.selectedIndices[0];
+      const targetLineIdx = lines.findIndex(line => line.items.some(it => it.idx === anchorIdx));
+      if (targetLineIdx === -1) return;
+
+      // 平均的な行間隔を計算して段落の切れ目を判定
+      const gaps = [];
+      for (let i = 1; i < lines.length; i++) {
+        gaps.push(Math.abs(lines[i].centerCoord - lines[i - 1].centerCoord));
+      }
+      gaps.sort((a, b) => a - b);
+      const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 45;
+      const paraThreshold = Math.max(medianGap * 1.48, lines[targetLineIdx].maxSpan * 1.85);
+
+      let startLine = targetLineIdx;
+      while (startLine > 0) {
+        const dist = Math.abs(lines[startLine].centerCoord - lines[startLine - 1].centerCoord);
+        if (dist > paraThreshold) break;
+        startLine--;
+      }
+
+      let endLine = targetLineIdx;
+      while (endLine < lines.length - 1) {
+        const dist = Math.abs(lines[endLine + 1].centerCoord - lines[endLine].centerCoord);
+        if (dist > paraThreshold) break;
+        endLine++;
+      }
+
+      const paraIndices = [];
+      for (let l = startLine; l <= endLine; l++) {
+        lines[l].items.forEach(it => paraIndices.push(it.idx));
+      }
+      applyWordSelection(paneType, pageIdx, paraIndices, true);
+      showToast('段落全体をまとめて選択しました');
     }
 
     // ピン止めトグル処理
@@ -1479,8 +1960,26 @@
       }
     });
     $('btnZoomIn').addEventListener('click', () => {
-      if (appState.zoom < 2.2) {
-        appState.zoom = Math.round((appState.zoom + 0.15) * 100) / 100;
+      if (appState.primaryZoom < 2.2) {
+        appState.primaryZoom = Math.round((appState.primaryZoom + 0.15) * 100) / 100;
+        renderAllViews();
+      }
+    });
+    $('btnZoomOut').addEventListener('click', () => {
+      if (appState.primaryZoom > 0.35) {
+        appState.primaryZoom = Math.round((appState.primaryZoom - 0.15) * 100) / 100;
+        renderAllViews();
+      }
+    });
+    $('btnPinnedZoomIn').addEventListener('click', () => {
+      if (appState.pinnedZoom < 2.2) {
+        appState.pinnedZoom = Math.round((appState.pinnedZoom + 0.15) * 100) / 100;
+        renderAllViews();
+      }
+    });
+    $('btnPinnedZoomOut').addEventListener('click', () => {
+      if (appState.pinnedZoom > 0.35) {
+        appState.pinnedZoom = Math.round((appState.pinnedZoom - 0.15) * 100) / 100;
         renderAllViews();
       }
     });
@@ -1493,15 +1992,265 @@
 
     /**
      * =========================================================================
-     * 7. ドラッグ範囲選択＆キャッシュ済みOCRからの0ms即時読み上げ
+     * 7. iPad風「青くなぞって選択・ハンドル調整・フローティングメニュー・即読み上げ」
      *    （プライマリ画面・ピン止め画面の両方で全く同じ操作が可能！）
      * =========================================================================
      */
+    function clearSelectionForPane(paneType) {
+      appState.selectionState[paneType] = {
+        pageIdx: null,
+        selectedIndices: [],
+        rawText: '',
+        speakingWordIdx: -1
+      };
+      drawOcrWordGuidesForPane(paneType, paneType === 'primary' ? appState.currentPageIndex : appState.pinnedPageIndex);
+      renderSelectionHandlesAndPopover(paneType);
+    }
+
+    // 選択されたインデックス配列からテキストを更新し、ハンドル＆ポップオーバーを再描画
+    function applyWordSelection(paneType, pageIdx, indices, autoSpeak = false) {
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+
+      const uniqueSorted = [...new Set(indices)].sort((a, b) => a - b);
+      const selectedWords = uniqueSorted.map(i => pageObj.ocrWords[i]).filter(Boolean);
+      const joinedText = joinWordsNaturally(selectedWords);
+
+      appState.selectionState[paneType] = {
+        pageIdx,
+        selectedIndices: uniqueSorted,
+        rawText: joinedText,
+        speakingWordIdx: -1
+      };
+
+      drawOcrWordGuidesForPane(paneType, pageIdx);
+      renderSelectionHandlesAndPopover(paneType);
+
+      if (joinedText) {
+        $('spokenTextBox').value = joinedText;
+        if (autoSpeak && $('chkAutoSpeakOnSelect').checked) {
+          speakFluentText(joinedText, paneType);
+        }
+      }
+    }
+
+    // iPad風 開始/終了ドラッグハンドル（青い縦棒＋丸つまみ）とフローティング操作バーの描画
+    function renderSelectionHandlesAndPopover(paneType) {
+      const uiLayer = $(`${paneType}SelectionUILayer`);
+      if (!uiLayer) return;
+      uiLayer.innerHTML = '';
+
+      const pageIdx = paneType === 'primary' ? appState.currentPageIndex : appState.pinnedPageIndex;
+      const pageObj = appState.pages[pageIdx];
+      const sel = appState.selectionState[paneType];
+      if (!pageObj || !sel || sel.pageIdx !== pageIdx || sel.selectedIndices.length === 0) return;
+
+      const firstWord = pageObj.ocrWords[sel.selectedIndices[0]];
+      const lastWord = pageObj.ocrWords[sel.selectedIndices[sel.selectedIndices.length - 1]];
+      if (!firstWord || !lastWord) return;
+
+      const zoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+      const isVert = appState.orientation === 'vertical';
+
+      // 選択全体のバウンディングボックス計算（ポップオーバー配置用）
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      sel.selectedIndices.forEach(idx => {
+        const w = pageObj.ocrWords[idx];
+        if (!w) return;
+        minX = Math.min(minX, w.bbox.x0 * zoom);
+        minY = Math.min(minY, w.bbox.y0 * zoom);
+        maxX = Math.max(maxX, w.bbox.x1 * zoom);
+        maxY = Math.max(maxY, w.bbox.y1 * zoom);
+      });
+
+      // 1. 開始ハンドル（iOS標準ブルー #007AFF の縦線＋上部丸つまみ）
+      const startHandle = createSelectionHandleElement(
+        paneType,
+        'start',
+        isVert ? firstWord.bbox.x0 * zoom : firstWord.bbox.x0 * zoom,
+        isVert ? firstWord.bbox.y0 * zoom : firstWord.bbox.y0 * zoom,
+        isVert ? (firstWord.bbox.x1 - firstWord.bbox.x0) * zoom : (firstWord.bbox.y1 - firstWord.bbox.y0) * zoom,
+        isVert
+      );
+      uiLayer.appendChild(startHandle);
+
+      // 2. 終了ハンドル（iOS標準ブルー #007AFF の縦線＋下部丸つまみ）
+      const endHandle = createSelectionHandleElement(
+        paneType,
+        'end',
+        isVert ? lastWord.bbox.x0 * zoom : lastWord.bbox.x1 * zoom,
+        isVert ? lastWord.bbox.y1 * zoom : lastWord.bbox.y0 * zoom,
+        isVert ? (lastWord.bbox.x1 - lastWord.bbox.x0) * zoom : (lastWord.bbox.y1 - lastWord.bbox.y0) * zoom,
+        isVert
+      );
+      uiLayer.appendChild(endHandle);
+
+      // 3. iPad風フローティングアクションメニュー（[▶ 読み上げ] [🐢 ゆっくり] [🌐 言語] [📋 コピー] [✕]）
+      const pop = document.createElement('div');
+      pop.className = 'ipad-popover pointer-events-auto absolute bg-slate-900/95 backdrop-blur text-white rounded-2xl shadow-2xl border border-slate-700 px-1.5 py-1 flex items-center gap-1 whitespace-nowrap z-40';
+
+      const stageW = pageObj.width * zoom;
+      const centerX = Math.max(155, Math.min(stageW - 155, (minX + maxX) / 2));
+      const placeBelow = minY < 56;
+      pop.style.left = `${centerX}px`;
+      pop.style.top = placeBelow ? `${maxY + 14}px` : `${Math.max(6, minY - 48)}px`;
+      pop.style.transform = 'translateX(-50%)';
+
+      pop.innerHTML = `
+        <button type="button" data-act="speak" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold flex items-center gap-1 transition">
+          <span>▶</span><span>読み上げ</span>
+        </button>
+        <button type="button" data-act="slow" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1 transition" title="0.7倍速でゆっくり読み上げ">
+          <span>🐢</span><span class="hidden sm:inline">ゆっくり</span>
+        </button>
+        <button type="button" data-act="english" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-sky-300 text-xs font-bold flex items-center gap-1 transition" title="英語ネイティブ発音で読み上げ">
+          <span>🇺🇸</span><span class="hidden sm:inline">英語</span>
+        </button>
+        <button type="button" data-act="copy" class="px-2 py-1.5 rounded-xl hover:bg-slate-700 text-slate-200 text-xs font-bold transition" title="コピー">
+          📋
+        </button>
+        <button type="button" data-act="clear" class="px-2 py-1.5 rounded-xl hover:bg-rose-600 text-slate-300 hover:text-white text-xs font-bold transition" title="選択解除">
+          ✕
+        </button>
+      `;
+
+      pop.addEventListener('mousedown', (e) => e.stopPropagation());
+      pop.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+
+      pop.querySelector('[data-act="speak"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType);
+      });
+      pop.querySelector('[data-act="slow"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType, { overrideRate: 0.7 });
+      });
+      pop.querySelector('[data-act="english"]').addEventListener('click', () => {
+        speakFluentText(sel.rawText, paneType, { forceLang: 'en-US' });
+      });
+      pop.querySelector('[data-act="copy"]').addEventListener('click', () => {
+        const ta = document.createElement('textarea');
+        ta.value = sel.rawText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('選択した文字をコピーしました');
+      });
+      pop.querySelector('[data-act="clear"]').addEventListener('click', () => {
+        stopSpeech();
+        clearSelectionForPane(paneType);
+      });
+
+      uiLayer.appendChild(pop);
+    }
+
+    // iPadの青い選択カーソルハンドル生成＆ドラッグによる1単語単位の選択範囲伸縮
+    function createSelectionHandleElement(paneType, edgeType, x, y, spanLen, isVertical) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pointer-events-auto absolute cursor-grab active:cursor-grabbing z-40';
+
+      if (isVertical) {
+        wrap.style.left = `${x}px`;
+        wrap.style.top = `${y - 1.5}px`;
+        wrap.style.width = `${Math.max(14, spanLen)}px`;
+        wrap.style.height = '3px';
+        wrap.style.backgroundColor = '#007AFF';
+
+        const dot = document.createElement('div');
+        dot.className = 'ipad-handle-dot absolute w-4 h-4 rounded-full bg-[#007AFF] border-2 border-white shadow-md';
+        dot.style.top = '-6.5px';
+        dot.style[edgeType === 'start' ? 'left' : 'right'] = '-8px';
+        wrap.appendChild(dot);
+      } else {
+        wrap.style.left = `${x - 1.5}px`;
+        wrap.style.top = `${y}px`;
+        wrap.style.width = '3px';
+        wrap.style.height = `${Math.max(16, spanLen)}px`;
+        wrap.style.backgroundColor = '#007AFF';
+
+        const dot = document.createElement('div');
+        dot.className = 'ipad-handle-dot absolute w-4 h-4 rounded-full bg-[#007AFF] border-2 border-white shadow-md';
+        dot.style.left = '-6.5px';
+        dot.style[edgeType === 'start' ? 'top' : 'bottom'] = '-8px';
+        wrap.appendChild(dot);
+      }
+
+      // ハンドルをドラッグして開始位置・終了位置を単語単位で伸縮
+      let draggingHandle = false;
+      const startDrag = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        draggingHandle = true;
+      };
+
+      const moveDrag = (e) => {
+        if (!draggingHandle) return;
+        e.preventDefault();
+        const pageIdx = paneType === 'primary' ? appState.currentPageIndex : appState.pinnedPageIndex;
+        const pageObj = appState.pages[pageIdx];
+        const sel = appState.selectionState[paneType];
+        if (!pageObj || !sel || sel.selectedIndices.length === 0) return;
+
+        const stage = $(`${paneType}Stage`);
+        const rect = stage.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+        const px = (clientX - rect.left) / paneZoom;
+        const py = (clientY - rect.top) / paneZoom;
+
+        const nearestIdx = findNearestWordIndex(pageObj.ocrWords, px, py);
+        if (nearestIdx === -1) return;
+
+        const curStart = sel.selectedIndices[0];
+        const curEnd = sel.selectedIndices[sel.selectedIndices.length - 1];
+        const newStart = edgeType === 'start' ? Math.min(nearestIdx, curEnd) : curStart;
+        const newEnd = edgeType === 'end' ? Math.max(nearestIdx, curStart) : curEnd;
+
+        const range = [];
+        for (let i = newStart; i <= newEnd; i++) range.push(i);
+        applyWordSelection(paneType, pageIdx, range, false);
+      };
+
+      const endDrag = () => {
+        if (!draggingHandle) return;
+        draggingHandle = false;
+        const sel = appState.selectionState[paneType];
+        if (sel && sel.rawText && $('chkAutoSpeakOnSelect').checked) {
+          speakFluentText(sel.rawText, paneType);
+        }
+      };
+
+      wrap.addEventListener('mousedown', startDrag);
+      window.addEventListener('mousemove', moveDrag);
+      window.addEventListener('mouseup', endDrag);
+      wrap.addEventListener('touchstart', startDrag, { passive: false });
+      window.addEventListener('touchmove', moveDrag, { passive: false });
+      window.addEventListener('touchend', endDrag);
+
+      return wrap;
+    }
+
+    function findNearestWordIndex(words, x, y) {
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      words.forEach((w, idx) => {
+        const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+        const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+        const dist = Math.hypot(cx - x, cy - y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      });
+      return bestDist < 260 ? bestIdx : -1;
+    }
+
     function attachStageInteractions(paneType) {
       const stage = $(`${paneType}Stage`);
       const overlayCanvas = $(`${paneType}OverlayCanvas`);
       let isDragging = false;
       let startX = 0, startY = 0, curX = 0, curY = 0;
+      let sweptIndicesSet = new Set();
 
       const getPageIndexForPane = () => paneType === 'primary' ? appState.currentPageIndex : appState.pinnedPageIndex;
 
@@ -1518,12 +2267,10 @@
       };
 
       const onDown = (e) => {
-        // 注釈アイテム上のドラッグは注釈側で処理
-        if (e.target.closest('.annotation-item')) return;
+        if (e.target.closest('.annotation-item') || e.target.closest('.ipad-popover')) return;
         const pageIdx = getPageIndexForPane();
         if (pageIdx === null || !appState.pages[pageIdx]) return;
 
-        // テキスト追加モードでクリックした場合はその場所に配置
         if (appState.toolMode === 'text') {
           const pos = getCanvasCoords(e);
           const draft = $('textNoteInput').value.trim();
@@ -1536,7 +2283,6 @@
           return;
         }
 
-        // 数式追加モードでクリックした場合はその場所に配置
         if (appState.toolMode === 'math') {
           const pos = getCanvasCoords(e);
           if (appState.mathTokens.length > 0) {
@@ -1547,12 +2293,25 @@
           return;
         }
 
-        // 「囲んでよむ」モード
         if (e.button !== undefined && e.button !== 0) return;
         isDragging = true;
+        sweptIndicesSet.clear();
         const pos = getCanvasCoords(e);
         startX = curX = pos.x;
         startY = curY = pos.y;
+
+        // 指を置いた瞬間に触れた単語を青くハイライト開始
+        const pageObj = appState.pages[pageIdx];
+        if (pageObj.ocrDone) {
+          pageObj.ocrWords.forEach((w, idx) => {
+            if (pos.x >= w.bbox.x0 - 6 && pos.x <= w.bbox.x1 + 6 && pos.y >= w.bbox.y0 - 6 && pos.y <= w.bbox.y1 + 6) {
+              sweptIndicesSet.add(idx);
+            }
+          });
+          if (sweptIndicesSet.size > 0) {
+            applyWordSelection(paneType, pageIdx, Array.from(sweptIndicesSet), false);
+          }
+        }
       };
 
       const onMove = (e) => {
@@ -1563,21 +2322,61 @@
         curY = pos.y;
 
         const pageIdx = getPageIndexForPane();
-        drawOcrWordGuidesForPane(paneType, pageIdx);
+        const pageObj = appState.pages[pageIdx];
+        if (!pageObj) return;
 
+        // 1. なぞった軌跡に触れた単語 ＋ 矩形範囲内の単語をリアルタイムにiPad風ブルーでハイライト！
+        if (pageObj.ocrDone && pageObj.ocrWords.length > 0) {
+          const rx0 = Math.min(startX, curX);
+          const ry0 = Math.min(startY, curY);
+          const rx1 = Math.max(startX, curX);
+          const ry1 = Math.max(startY, curY);
+
+          // カーソル直下の単語を追加（iPadの指なぞり感覚）
+          pageObj.ocrWords.forEach((w, idx) => {
+            if (curX >= w.bbox.x0 - 5 && curX <= w.bbox.x1 + 5 && curY >= w.bbox.y0 - 5 && curY <= w.bbox.y1 + 5) {
+              sweptIndicesSet.add(idx);
+            }
+          });
+
+          // 矩形選択範囲と重なる単語を統合
+          const combinedSet = new Set(sweptIndicesSet);
+          if (rx1 - rx0 > 12 || ry1 - ry0 > 12) {
+            pageObj.ocrWords.forEach((w, idx) => {
+              const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+              const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+              if (cx >= rx0 && cx <= rx1 && cy >= ry0 && cy <= ry1) {
+                combinedSet.add(idx);
+              }
+            });
+          }
+
+          if (combinedSet.size > 0) {
+            // 開始単語から終了単語まで連続選択（iPadの行またぎ選択と同じ挙動）
+            const arr = Array.from(combinedSet).sort((a, b) => a - b);
+            const continuousRange = [];
+            for (let i = arr[0]; i <= arr[arr.length - 1]; i++) {
+              continuousRange.push(i);
+            }
+            applyWordSelection(paneType, pageIdx, continuousRange, false);
+          } else {
+            drawOcrWordGuidesForPane(paneType, pageIdx);
+          }
+        }
+
+        // 2. ドラッグ中の軽やかなガイド枠表示
         const ctx = overlayCanvas.getContext('2d');
         const x = Math.min(startX, curX);
         const y = Math.min(startY, curY);
         const w = Math.abs(curX - startX);
         const h = Math.abs(curY - startY);
-
-        ctx.fillStyle = appState.orientation === 'vertical' ? 'rgba(99, 102, 241, 0.22)' : 'rgba(37, 99, 235, 0.22)';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = appState.orientation === 'vertical' ? '#4f46e5' : '#2563eb';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([8, 5]);
-        ctx.strokeRect(x, y, w, h);
-        ctx.setLineDash([]);
+        if (w > 8 || h > 8) {
+          ctx.strokeStyle = 'rgba(0, 122, 255, 0.55)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(x, y, w, h);
+          ctx.setLineDash([]);
+        }
       };
 
       const onUp = async () => {
@@ -1594,83 +2393,82 @@
         const w = x1 - x0;
         const h = y1 - y0;
 
-        // 小さいクリックの場合：その位置にある単一ワードを即座に読み上げ
-        if (w < 14 && h < 14) {
-          const hitWord = pageObj.ocrWords.find(word =>
+        // タップ（小さい動き）：その場所の単語を選択、余白なら選択解除
+        if (w < 12 && h < 12) {
+          const hitIdx = pageObj.ocrWords.findIndex(word =>
             x0 >= word.bbox.x0 - 6 && x0 <= word.bbox.x1 + 6 &&
             y0 >= word.bbox.y0 - 6 && y0 <= word.bbox.y1 + 6
           );
-          if (hitWord) {
-            drawOcrWordGuidesForPane(paneType, pageIdx, [hitWord.bbox]);
-            $('spokenTextBox').value = hitWord.text;
-            speakText(hitWord.text);
+          if (hitIdx >= 0) {
+            applyWordSelection(paneType, pageIdx, [hitIdx], true);
           } else {
-            drawOcrWordGuidesForPane(paneType, pageIdx);
+            clearSelectionForPane(paneType);
           }
           return;
         }
 
-        // 1. キャッシュ済み全ページOCR結果から範囲内の文字を瞬時に抽出（0ms）
-        if (pageObj.ocrDone && pageObj.ocrWords.length > 0) {
-          const matchedWords = pageObj.ocrWords.filter(word => {
-            const cx = (word.bbox.x0 + word.bbox.x1) / 2;
-            const cy = (word.bbox.y0 + word.bbox.y1) / 2;
-            return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
-          });
-
-          if (matchedWords.length > 0) {
-            const sortedText = sortAndJoinWords(matchedWords, appState.orientation);
-            drawOcrWordGuidesForPane(paneType, pageIdx, matchedWords.map(mw => mw.bbox));
-            $('spokenTextBox').value = sortedText;
-            speakText(sortedText);
-            return;
-          }
+        // すでにリアルタイム選択で単語が選ばれている場合は確定＆即読み上げ！
+      const sel = appState.selectionState[paneType];
+      if (sel && sel.pageIdx === pageIdx && sel.selectedIndices.length > 0) {
+        drawOcrWordGuidesForPane(paneType, pageIdx);
+        renderSelectionHandlesAndPopover(paneType);
+        if ($('chkAutoSpeakOnSelect').checked) {
+          speakFluentText(sel.rawText, paneType);
         }
-
-        // 2. キャッシュ解析中 or 画像領域判定＆フォールバック即時OCR
-        await fallbackRegionOcr(paneType, pageIdx, Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
-      };
-
-      stage.addEventListener('mousedown', onDown);
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-      stage.addEventListener('touchstart', onDown, { passive: false });
-      stage.addEventListener('touchmove', onMove, { passive: false });
-      stage.addEventListener('touchend', onUp);
-    }
-
-    attachStageInteractions('primary');
-    attachStageInteractions('pinned');
-
-    // 読み順ソート＆自然な日本語結合（横書き: 上→下, 左→右 / 縦書き: 右→左, 上→下）
-    function sortAndJoinWords(words, orientation) {
-      const cloned = [...words];
-      if (orientation === 'vertical') {
-        // 縦書き：X座標が大きい（右）列が先、同じ列内ではY座標が小さい（上）が先
-        cloned.sort((a, b) => {
-          const colDiff = b.bbox.x0 - a.bbox.x0;
-          if (Math.abs(colDiff) > 22) return colDiff;
-          return a.bbox.y0 - b.bbox.y0;
-        });
       } else {
-        // 横書き：Y座標が小さい（上）行が先、同じ行内ではX座標が小さい（左）が先
-        cloned.sort((a, b) => {
-          const rowDiff = a.bbox.y0 - b.bbox.y0;
-          if (Math.abs(rowDiff) > 22) return rowDiff;
-          return a.bbox.x0 - b.bbox.x0;
-        });
+        fallbackRegionOcr(paneType, pageIdx, x0, y0, w, h);
       }
-      return cloned.map(w => w.text).join('')
-        .replace(/([^\x00-\x7F])\s+([^\x00-\x7F])/g, '$1$2');
-    }
+    };
 
-    // 未解析時や写真・イラスト領域の判別付きフォールバックOCR
-    async function fallbackRegionOcr(paneType, pageIdx, x, y, w, h) {
+    // ダブルクリックでその行（または列）を一発全選択、トリプルクリックで段落全体を選択
+    stage.addEventListener('dblclick', (e) => {
+      if (appState.toolMode !== 'read') return;
+      const pageIdx = getPageIndexForPane();
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj || !pageObj.ocrDone) return;
+      const pos = getCanvasCoords(e);
+      const hitIdx = pageObj.ocrWords.findIndex(word =>
+        pos.x >= word.bbox.x0 - 8 && pos.x <= word.bbox.x1 + 8 &&
+        pos.y >= word.bbox.y0 - 8 && pos.y <= word.bbox.y1 + 8
+      );
+      if (hitIdx === -1) return;
+
+      const targetWord = pageObj.ocrWords[hitIdx];
+      const lineIndices = [];
+      pageObj.ocrWords.forEach((word, idx) => {
+        if (appState.orientation === 'vertical') {
+          if (Math.abs(word.bbox.x0 - targetWord.bbox.x0) < 28) lineIndices.push(idx);
+        } else {
+          if (Math.abs(word.bbox.y0 - targetWord.bbox.y0) < 26) lineIndices.push(idx);
+        }
+      });
+      applyWordSelection(paneType, pageIdx, lineIndices, true);
+    });
+
+    stage.addEventListener('click', (e) => {
+      if (e.detail === 3 && appState.toolMode === 'read') {
+        const pageIdx = getPageIndexForPane();
+        expandSelectionToParagraph(paneType, pageIdx);
+      }
+    });
+
+    stage.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    stage.addEventListener('touchstart', onDown, { passive: false });
+    stage.addEventListener('touchmove', onMove, { passive: false });
+    stage.addEventListener('touchend', onUp);
+  }
+
+  attachStageInteractions('primary');
+  attachStageInteractions('pinned');
+
+  // 未解析時や写真・イラスト領域の判別付きフォールバックOCR
+  async function fallbackRegionOcr(paneType, pageIdx, x, y, w, h) {
       const pageObj = appState.pages[pageIdx];
       const ctx = pageObj.baseCanvas.getContext('2d', { willReadFrequently: true });
       const imgData = ctx.getImageData(x, y, Math.max(1, w), Math.max(1, h)).data;
 
-      // ピクセル分散・彩度チェック（写真・イラスト・余白の判定）
       let sumLum = 0, sumSq = 0, satSum = 0, cnt = 0;
       for (let i = 0; i < imgData.length; i += 16) {
         const r = imgData[i], g = imgData[i + 1], b = imgData[i + 2];
@@ -1690,7 +2488,6 @@
         return;
       }
 
-      // 一括OCR完了前ならその部分だけ即座にOCR実行
       const crop = document.createElement('canvas');
       crop.width = w * 2;
       crop.height = h * 2;
@@ -1701,7 +2498,7 @@
 
       const worker = await getTesseractWorker(appState.orientation);
       const res = await worker.recognize(crop);
-      const cleaned = (res.data.text || '').replace(/\s+/g, '').trim();
+      const cleaned = (res.data.text || '').replace(/\s+/g, ' ').trim();
 
       drawOcrWordGuidesForPane(paneType, pageIdx);
       if (!cleaned) {
@@ -1709,7 +2506,7 @@
         return;
       }
       $('spokenTextBox').value = cleaned;
-      speakText(cleaned);
+      speakFluentText(cleaned, paneType);
     }
 
     // ページ全体読み上げボタン（メイン＆ピン止め）
@@ -1720,10 +2517,9 @@
         showToast('このページは解析中か、文字がありません');
         return;
       }
-      const fullText = sortAndJoinWords(pageObj.ocrWords, appState.orientation);
-      drawOcrWordGuidesForPane(paneType, pageIdx, pageObj.ocrWords.map(w => w.bbox));
-      $('spokenTextBox').value = fullText;
-      speakText(fullText);
+      const allIndices = pageObj.ocrWords.map((_, idx) => idx);
+      applyWordSelection(paneType, pageIdx, allIndices, false);
+      speakFluentText(appState.selectionState[paneType].rawText, paneType);
     }
 
     $('btnReadWholePrimary').addEventListener('click', () => readWholePage('primary', appState.currentPageIndex));
@@ -2100,13 +2896,14 @@
       const pageObj = appState.pages[pageIdx];
       if (!layer || !pageObj) return;
       layer.innerHTML = '';
+      const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
 
       pageObj.annotations.forEach(anno => {
         const el = document.createElement('div');
         el.className = `annotation-item rounded-xl px-2.5 py-1.5 font-ud font-bold shadow-sm ${anno.id === appState.selectedAnnotationId ? 'selected' : ''}`;
-        el.style.left = `${anno.x * appState.zoom}px`;
-        el.style.top = `${anno.y * appState.zoom}px`;
-        el.style.fontSize = `${Math.round(anno.fontSize * appState.zoom)}px`;
+        el.style.left = `${anno.x * paneZoom}px`;
+        el.style.top = `${anno.y * paneZoom}px`;
+        el.style.fontSize = `${Math.round(anno.fontSize * paneZoom)}px`;
         el.style.color = anno.color;
         el.style.backgroundColor = anno.bg;
         if (anno.type === 'math') {
@@ -2132,21 +2929,31 @@
           startClientY = pt.clientY;
           origX = anno.x;
           origY = anno.y;
-          // 選択枠の見た目だけ即時更新
           document.querySelectorAll('.annotation-item').forEach(node => node.classList.remove('selected'));
           el.classList.add('selected');
+
+          // 数式・テキストメモをクリックしただけでもすぐ読み上げ確認できるようにテキスト欄に反映
+          if (anno.spokenText) {
+            $('spokenTextBox').value = anno.spokenText;
+          }
         };
+
+        // ダブルクリックで注釈（数式・メモ）を即読み上げ
+        el.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          if (anno.spokenText) speakFluentText(anno.spokenText, paneType);
+        });
 
         const onMove = (e) => {
           if (!dragging) return;
           e.preventDefault();
           const pt = e.touches ? e.touches[0] : e;
-          const dx = (pt.clientX - startClientX) / appState.zoom;
-          const dy = (pt.clientY - startClientY) / appState.zoom;
+          const dx = (pt.clientX - startClientX) / paneZoom;
+          const dy = (pt.clientY - startClientY) / paneZoom;
           anno.x = Math.max(0, Math.min(pageObj.width - 40, origX + dx));
           anno.y = Math.max(0, Math.min(pageObj.height - 30, origY + dy));
-          el.style.left = `${anno.x * appState.zoom}px`;
-          el.style.top = `${anno.y * appState.zoom}px`;
+          el.style.left = `${anno.x * paneZoom}px`;
+          el.style.top = `${anno.y * paneZoom}px`;
         };
 
         const onEnd = () => {
@@ -2201,7 +3008,7 @@
       const hit = findSelectedAnnotation();
       if (hit && hit.anno.spokenText) {
         $('spokenTextBox').value = hit.anno.spokenText;
-        speakText(hit.anno.spokenText);
+        speakFluentText(hit.anno.spokenText);
       }
     });
 
@@ -2347,87 +3154,388 @@
 
     /**
      * =========================================================================
+     * 13. 数式自然言語変換 ＋ 日英バイリンガル流暢音声読み上げエンジン
+     * =========================================================================
+     */
+    // 数式テキスト（OCRで読み取った数式や記号）を自然な日本語・英語の読み上げ文へ正規化
+    function normalizeMathExpressionForSpeech(text, targetLang = 'ja') {
+      if (!text) return '';
+      let s = String(text);
+
+      // 英語モード時の数式読み上げ変換
+      if (targetLang.startsWith('en')) {
+        s = s
+          .replace(/(\d+)\s+(\d+)\s*\/\s*(\d+)/g, '$1 and $2 over $3')
+          .replace(/(\d+)\s*\/\s*(\d+)/g, '$1 over $2')
+          .replace(/([A-Za-z0-9\)])\s*[\^²]\s*2?/g, '$1 squared')
+          .replace(/([A-Za-z0-9\)])\s*[\^³]\s*3?/g, '$1 cubed')
+          .replace(/√\s*\(([^)]+)\)/g, 'square root of $1')
+          .replace(/√\s*([A-Za-z0-9]+)/g, 'square root of $1')
+          .replace(/\+/g, ' plus ')
+          .replace(/[-−]/g, ' minus ')
+          .replace(/[×*]/g, ' times ')
+          .replace(/÷/g, ' divided by ')
+          .replace(/=/g, ' equals ')
+          .replace(/≠/g, ' is not equal to ')
+          .replace(/≤/g, ' is less than or equal to ')
+          .replace(/≥/g, ' is greater than or equal to ')
+          .replace(/</g, ' is less than ')
+          .replace(/>/g, ' is greater than ')
+          .replace(/°/g, ' degrees')
+          .replace(/π/g, ' pi ')
+          .replace(/%/g, ' percent');
+        return s.replace(/\s+/g, ' ').trim();
+      }
+
+      // 日本語モード時の数式・記号読み上げ変換（小学生〜高校生まで自然で聞き取りやすい表現）
+      // 1. 帯分数 (例: 2 1/3 -> 2と 3分の1)
+      s = s.replace(/(\d+)\s+(\d+)\s*[\/／]\s*(\d+)/g, '$1と $3分の$2');
+      // 2. 分数 (例: 3/4 -> 4分の3, a/b -> b分のa)
+      s = s.replace(/([0-9A-Za-z]+)\s*[\/／]\s*([0-9A-Za-z]+)/g, '$2分の$1');
+      // 3. Unicode分数記号
+      const uniFracs = { '½': '2分の1', '⅓': '3分の1', '⅔': '3分の2', '¼': '4分の1', '¾': '4分の3', '⅕': '5分の1', '⅖': '5分の2', '⅗': '5分の3', '⅘': '5分の4' };
+      s = s.replace(/[½⅓⅔¼¾⅕⅖⅗⅘]/g, m => uniFracs[m] || m);
+      // 4. 累乗・指数 (x², x³, x^2, 10^n)
+      s = s.replace(/([0-9A-Za-z\)])\s*\^\s*\(([^)]+)\)/g, '$1の$2乗');
+      s = s.replace(/([0-9A-Za-z\)])\s*\^\s*([0-9A-Za-z]+)/g, '$1の$2乗');
+      s = s.replace(/([0-9A-Za-z\)])²/g, '$1の2乗');
+      s = s.replace(/([0-9A-Za-z\)])³/g, '$1の3乗');
+      // 5. ルート・平方根 (√16, √(x+1))
+      s = s.replace(/√\s*\(([^)]+)\)/g, 'ルート $1');
+      s = s.replace(/√\s*([0-9A-Za-z]+)/g, 'ルート $1');
+      // 6. 図形・数学記号
+      s = s
+        .replace(/△([A-Za-z]{3})/g, '三角形$1')
+        .replace(/∠([A-Za-z]{1,3})/g, '角$1')
+        .replace(/∽/g, ' 相似 ')
+        .replace(/≡/g, ' 合同 ')
+        .replace(/⊥/g, ' 垂直 ')
+        .replace(/∥/g, ' 平行 ')
+        .replace(/∴/g, ' よって ')
+        .replace(/∵/g, ' なぜなら ')
+        .replace(/∞/g, ' 無限大 ')
+        .replace(/π/g, ' パイ ')
+        .replace(/θ/g, ' シータ ')
+        .replace(/±/g, ' プラスマイナス ')
+        .replace(/≠/g, ' ノットイコール ')
+        .replace(/[≒≈]/g, ' およそイコール ')
+        .replace(/≤|≦/g, ' 小なりイコール ')
+        .replace(/≥|≧/g, ' 大なりイコール ')
+        .replace(/</g, ' 小なり ')
+        .replace(/>/g, ' 大なり ')
+        .replace(/°/g, '度')
+        .replace(/%/g, 'パーセント');
+
+      // 7. 四則演算・イコール（文脈に応じて自然な日本語に変換）
+      s = s
+        .replace(/[＋+]/g, ' たす ')
+        .replace(/[－−]/g, ' ひく ')
+        .replace(/[×*]/g, ' かける ')
+        .replace(/[÷]/g, ' わる ')
+        .replace(/[＝=]/g, ' は ');
+
+      // 8. 式のなかの単独アルファベット変数 (3x -> 3エックス, y -> ワイ) をカタカナ読みにして日本語音声で明瞭に発音
+      const varMap = { a: 'エー', b: 'ビー', c: 'シー', x: 'エックス', y: 'ワイ', z: 'ゼット', n: 'エヌ' };
+      s = s.replace(/(?<![A-Za-z])([abcxyzn])(?![A-Za-z])/gi, (m) => varMap[m.toLowerCase()] || m);
+
+      return s.replace(/\s+/g, ' ').trim();
+    }
+
+    // テキストが英語主体か、日本語主体か、日英混在かを判定してチャンク分割する
+    function segmentBilingualChunks(rawText, mode) {
+      if (mode === 'en-US' || mode === 'en-GB') {
+        return [{ text: normalizeMathExpressionForSpeech(rawText, mode), lang: mode }];
+      }
+      if (mode === 'ja-JP') {
+        return [{ text: normalizeMathExpressionForSpeech(rawText, 'ja-JP'), lang: 'ja-JP' }];
+      }
+
+      // 「日英自動 (bilingual)」：日本語文字（ひらがな・カタカナ・漢字）と英語フレーズを自動分離
+      const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(rawText);
+      const englishWords = rawText.match(/[A-Za-z]{2,}/g) || [];
+
+      // 日本語を含まず英単語がある場合は純粋な英語文としてネイティブ発音！
+      if (!hasJapanese && englishWords.length > 0) {
+        return [{ text: normalizeMathExpressionForSpeech(rawText, 'en-US'), lang: 'en-US' }];
+      }
+
+      const chunks = [];
+      const parts = rawText.split(/([A-Za-z0-9\s.,!?;:'"()%°+-−×÷=<>]+)/g);
+      parts.forEach(part => {
+        if (!part) return;
+        const isEngPart = /[A-Za-z]/.test(part);
+        chunks.push({
+          text: normalizeMathExpressionForSpeech(part, isEngPart ? 'en-US' : 'ja-JP'),
+          lang: isEngPart ? 'en-US' : 'ja-JP'
+        });
+      });
+      return chunks.length > 0 ? chunks : [{ text: normalizeMathExpressionForSpeech(rawText, 'ja-JP'), lang: 'ja-JP' }];
+    }
+
+    // 利用可能な音声から指定言語に最も適したボイスを選択
+    function pickBestVoiceForLang(langCode) {
+      const voices = window.speechSynthesis.getVoices() || [];
+      if (langCode.startsWith('en')) {
+        const target = voices.find(v => v.lang === langCode || v.lang.replace('_', '-') === langCode);
+        if (target) return target;
+        return voices.find(v => v.lang.startsWith('en')) || null;
+      }
+      const jaTarget = voices.find(v => v.lang === 'ja-JP' || v.lang.startsWith('ja'));
+      return jaTarget || null;
+    }
+
+    // 読み上げ中の単語インデックスを更新し、必要に応じて該当単語へスムーズスクロール
+    function updateKaraokeHighlightStep(paneType, wordOrder) {
+      if (!paneType) return;
+      const sel = appState.selectionState[paneType];
+      if (!sel || sel.selectedIndices.length === 0) return;
+      const clampedOrder = Math.max(0, Math.min(sel.selectedIndices.length - 1, wordOrder));
+      if (sel.speakingWordIdx === clampedOrder) return;
+
+      sel.speakingWordIdx = clampedOrder;
+      drawOcrWordGuidesForPane(paneType, sel.pageIdx);
+
+      // 画面外に読み上げ箇所が移動した場合は自動でスクロール追従
+      const pageObj = appState.pages[sel.pageIdx];
+      const activeWord = pageObj && pageObj.ocrWords[sel.selectedIndices[clampedOrder]];
+      const scrollArea = $(`${paneType}ScrollArea`);
+      if (activeWord && scrollArea) {
+        const zoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+        const wordTop = activeWord.bbox.y0 * zoom;
+        const wordBottom = activeWord.bbox.y1 * zoom;
+        const viewTop = scrollArea.scrollTop;
+        const viewBottom = viewTop + scrollArea.clientHeight;
+        if (wordTop < viewTop + 40 || wordBottom > viewBottom - 60) {
+          scrollArea.scrollTo({
+            top: Math.max(0, wordTop - scrollArea.clientHeight * 0.35),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }
+
+    // 日英バイリンガル＆数式対応・ライブハイライト連動の流暢読み上げ関数
+    function speakFluentText(text, paneType = null, options = {}) {
+      if (!('speechSynthesis' in window)) {
+        showToast('このブラウザは音声読み上げに対応していません');
+        return;
+      }
+      const clean = (text || '').trim();
+      if (!clean) {
+        showToast('読み上げる文字がありません');
+        return;
+      }
+
+      appState.lastSpokenText = clean;
+      const runId = ++appState.speechRunId;
+      if (appState.karaokeFallbackTimer) {
+        clearInterval(appState.karaokeFallbackTimer);
+        appState.karaokeFallbackTimer = null;
+      }
+      window.speechSynthesis.cancel();
+
+      const langMode = options.forceLang || appState.speechLangMode;
+      const rate = options.overrideRate || appState.speechRate;
+      const chunks = segmentBilingualChunks(clean, langMode);
+      const totalCharsAllChunks = chunks.reduce((acc, c) => acc + Math.max(1, c.text.length), 0);
+
+      // 最初の単語を即座に黄色ハイライト点灯
+      if (paneType) {
+        updateKaraokeHighlightStep(paneType, 0);
+      }
+
+      let chunkIdx = 0;
+      let consumedCharsBeforeChunk = 0;
+
+      const speakNextChunk = () => {
+        if (runId !== appState.speechRunId) return;
+        if (appState.karaokeFallbackTimer) {
+          clearInterval(appState.karaokeFallbackTimer);
+          appState.karaokeFallbackTimer = null;
+        }
+
+        if (chunkIdx >= chunks.length) {
+          $('ttsStatusDot').className = 'w-3 h-3 rounded-full bg-slate-500 shrink-0';
+          if (paneType && appState.selectionState[paneType]) {
+            appState.selectionState[paneType].speakingWordIdx = -1;
+            drawOcrWordGuides();
+          }
+          return;
+        }
+
+        const chunk = chunks[chunkIdx];
+        const utt = new SpeechSynthesisUtterance(chunk.text);
+        utt.lang = chunk.lang;
+        utt.rate = rate;
+        utt.pitch = 1.0;
+
+        const voice = pickBestVoiceForLang(chunk.lang);
+        if (voice) utt.voice = voice;
+
+        let boundaryFired = false;
+        const chunkStartTime = performance.now();
+        // 日本語・英語それぞれの1文字あたり平均発話時間(ms)からフォールバック進行速度を算出
+        const msPerChar = (chunk.lang.startsWith('ja') ? 135 : 72) / Math.max(0.4, rate);
+        const estimatedChunkMs = Math.max(350, chunk.text.length * msPerChar);
+
+        utt.onstart = () => {
+          if (runId !== appState.speechRunId) return;
+          $('ttsStatusDot').className = 'w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0';
+
+          // onboundaryが発火しない日本語ブラウザでも黄色ハイライトが確実に追従するタイマー
+          if (paneType) {
+            appState.karaokeFallbackTimer = setInterval(() => {
+              if (runId !== appState.speechRunId || boundaryFired) return;
+              if (window.speechSynthesis.paused) return;
+              const sel = appState.selectionState[paneType];
+              if (!sel || sel.selectedIndices.length === 0) return;
+
+              const elapsed = performance.now() - chunkStartTime;
+              const chunkProgress = Math.min(0.98, elapsed / estimatedChunkMs);
+              const globalCharPos = consumedCharsBeforeChunk + chunkProgress * chunk.text.length;
+              const globalRatio = Math.min(0.99, globalCharPos / totalCharsAllChunks);
+              const wordOrder = Math.floor(globalRatio * sel.selectedIndices.length);
+              updateKaraokeHighlightStep(paneType, wordOrder);
+            }, 60);
+          }
+        };
+
+        // 単語境界イベントが発火する環境では実発話位置にぴったり同期
+        utt.onboundary = (event) => {
+          if (runId !== appState.speechRunId || !paneType) return;
+          boundaryFired = true;
+          const sel = appState.selectionState[paneType];
+          if (!sel || sel.selectedIndices.length === 0) return;
+          const globalCharPos = consumedCharsBeforeChunk + (event.charIndex || 0);
+          const ratio = Math.min(0.99, globalCharPos / totalCharsAllChunks);
+          const wordOrder = Math.floor(ratio * sel.selectedIndices.length);
+          updateKaraokeHighlightStep(paneType, wordOrder);
+        };
+
+        utt.onend = () => {
+          if (runId !== appState.speechRunId) return;
+          consumedCharsBeforeChunk += chunk.text.length;
+          chunkIdx++;
+          speakNextChunk();
+        };
+
+        utt.onerror = () => {
+          if (runId !== appState.speechRunId) return;
+          consumedCharsBeforeChunk += chunk.text.length;
+          chunkIdx++;
+          speakNextChunk();
+        };
+
+        window.speechSynthesis.speak(utt);
+      };
+
+      speakNextChunk();
+    }
+
+    // 既存コードとの互換ラッパー
+    function speakText(text) {
+      speakFluentText(text, null);
+    }
+
+    function stopSpeech() {
+      appState.speechRunId++;
+      if (appState.karaokeFallbackTimer) {
+        clearInterval(appState.karaokeFallbackTimer);
+        appState.karaokeFallbackTimer = null;
+      }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      $('ttsStatusDot').className = 'w-3 h-3 rounded-full bg-slate-500 shrink-0';
+      if (appState.selectionState.primary) appState.selectionState.primary.speakingWordIdx = -1;
+      if (appState.selectionState.pinned) appState.selectionState.pinned.speakingWordIdx = -1;
+      drawOcrWordGuides();
+    }
+
+    $('btnSpeechPlay').addEventListener('click', () => {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        $('ttsStatusDot').className = 'w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0';
+      } else {
+        speakFluentText($('spokenTextBox').value, 'primary');
+      }
+    });
+    $('btnSpeechPause').addEventListener('click', () => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        $('ttsStatusDot').className = 'w-3 h-3 rounded-full bg-amber-400 shrink-0';
+      }
+    });
+    $('btnSpeechStop').addEventListener('click', stopSpeech);
+    $('btnSpeechReplay').addEventListener('click', () => {
+      speakFluentText($('spokenTextBox').value || appState.lastSpokenText, 'primary');
+    });
+
+    $('speechRateSlider').addEventListener('input', (e) => {
+      appState.speechRate = parseFloat(e.target.value);
+      $('speechRateLabel').textContent = `${appState.speechRate.toFixed(1)}x`;
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        speakFluentText($('spokenTextBox').value, 'primary');
+      }
+    });
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+
+    /**
+     * =========================================================================
      * 14. 書き込み済みページの PNG / PDF 保存・書き出し機能
      * =========================================================================
      */
-    // 1ページ分の下地キャンバス＋テキスト注釈＋数式を1枚の合成キャンバスに描画
+    $('btnExportModal').addEventListener('click', () => {
+      $('exportModal').classList.remove('hidden');
+    });
+    $('btnCloseExport').addEventListener('click', () => {
+      $('exportModal').classList.add('hidden');
+    });
+
+    // ベースキャンバスと注釈（テキスト・数式）を合成した高画質Canvasを生成
     function renderCompositePageCanvas(pageObj) {
       const out = document.createElement('canvas');
       out.width = pageObj.width;
       out.height = pageObj.height;
-      const ctx = out.getContext('2d');
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, out.width, out.height);
       ctx.drawImage(pageObj.baseCanvas, 0, 0);
 
       pageObj.annotations.forEach(anno => {
         ctx.save();
-        ctx.font = `bold ${anno.fontSize}px "BIZ UDPGothic", "Noto Sans JP", sans-serif`;
-        ctx.textBaseline = 'top';
-
+        ctx.font = `bold ${anno.fontSize}px "BIZ UDPGothic", sans-serif`;
         if (anno.type === 'text') {
           const lines = anno.text.split('\n');
-          const lineH = anno.fontSize * 1.3;
-          const maxW = Math.max(...lines.map(l => ctx.measureText(l).width), 40);
+          const lineHeight = anno.fontSize * 1.35;
+          let maxW = 0;
+          lines.forEach(l => maxW = Math.max(maxW, ctx.measureText(l).width));
+          const boxW = maxW + 20;
+          const boxH = lines.length * lineHeight + 12;
+
           if (anno.bg && anno.bg !== 'transparent') {
             ctx.fillStyle = anno.bg;
-            ctx.fillRect(anno.x, anno.y, maxW + 16, lines.length * lineH + 10);
+            ctx.fillRect(anno.x, anno.y, boxW, boxH);
           }
-          ctx.fillStyle = anno.color;
-          lines.forEach((l, idx) => {
-            ctx.fillText(l, anno.x + 8, anno.y + 6 + idx * lineH);
+          ctx.fillStyle = anno.color || '#0f172a';
+          ctx.textBaseline = 'top';
+          lines.forEach((line, idx) => {
+            ctx.fillText(line, anno.x + 10, anno.y + 6 + idx * lineHeight);
           });
         } else if (anno.type === 'math') {
-          // 数式ブロックのキャンバス描画
-          let cursorX = anno.x + 12;
-          const baseY = anno.y + 16;
-          const fs = anno.fontSize;
-
-          // 背景ボックス（概算幅）
-          const estW = Math.max(80, anno.tokens.length * fs * 0.9 + 24);
+          // 数式スタンプの簡易合成
           ctx.fillStyle = anno.bg || 'rgba(238, 242, 255, 0.94)';
-          ctx.fillRect(anno.x, anno.y, estW, fs * 2.1);
+          ctx.fillRect(anno.x, anno.y, 180, 50);
           ctx.strokeStyle = '#818cf8';
           ctx.lineWidth = 2;
-          ctx.strokeRect(anno.x, anno.y, estW, fs * 2.1);
+          ctx.strokeRect(anno.x, anno.y, 180, 50);
 
-          ctx.fillStyle = anno.color;
-          anno.tokens.forEach(t => {
-            if (t.kind === 'char') {
-              ctx.font = `bold ${fs}px "BIZ UDPGothic", sans-serif`;
-              ctx.fillText(t.val, cursorX, baseY);
-              cursorX += ctx.measureText(t.val).width + 4;
-            } else if (t.kind === 'fraction' || t.kind === 'mixed') {
-              if (t.kind === 'mixed') {
-                ctx.font = `bold ${fs}px "BIZ UDPGothic", sans-serif`;
-                ctx.fillText(t.whole || '□', cursorX, baseY);
-                cursorX += ctx.measureText(t.whole || '□').width + 6;
-              }
-              const smallFs = Math.round(fs * 0.72);
-              ctx.font = `bold ${smallFs}px "BIZ UDPGothic", sans-serif`;
-              const numW = ctx.measureText(t.num || '□').width;
-              const denW = ctx.measureText(t.den || '□').width;
-              const barW = Math.max(numW, denW) + 12;
-              ctx.fillText(t.num || '□', cursorX + (barW - numW) / 2, baseY - smallFs * 0.45);
-              ctx.fillRect(cursorX, baseY + smallFs * 0.55, barW, 2.5);
-              ctx.fillText(t.den || '□', cursorX + (barW - denW) / 2, baseY + smallFs * 0.7);
-              cursorX += barW + 8;
-            } else if (t.kind === 'power') {
-              ctx.font = `bold ${fs}px "BIZ UDPGothic", sans-serif`;
-              ctx.fillText(t.base || 'x', cursorX, baseY);
-              cursorX += ctx.measureText(t.base || 'x').width + 2;
-              const expFs = Math.round(fs * 0.6);
-              ctx.font = `bold ${expFs}px "BIZ UDPGothic", sans-serif`;
-              ctx.fillText(t.exp || '2', cursorX, baseY - expFs * 0.4);
-              cursorX += ctx.measureText(t.exp || '2').width + 6;
-            } else if (t.kind === 'sqrt') {
-              ctx.font = `bold ${fs}px "BIZ UDPGothic", sans-serif`;
-              const bodyW = ctx.measureText(t.body || '□').width;
-              ctx.fillText('√', cursorX, baseY);
-              const symW = ctx.measureText('√').width;
-              ctx.fillRect(cursorX + symW - 2, baseY - 2, bodyW + 8, 2.5);
-              ctx.fillText(t.body || '□', cursorX + symW + 2, baseY + 2);
-              cursorX += symW + bodyW + 10;
-            }
-          });
+          ctx.fillStyle = anno.color || '#1e1b4b';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold 24px "BIZ UDPGothic", sans-serif`;
+          ctx.fillText(anno.spokenText || '数式', anno.x + 12, anno.y + 25);
         }
         ctx.restore();
       });
@@ -2435,40 +3543,43 @@
       return out;
     }
 
-    $('btnExportModal').addEventListener('click', () => $('exportModal').classList.remove('hidden'));
-    $('btnCloseExport').addEventListener('click', () => $('exportModal').classList.add('hidden'));
-
     $('btnDownloadCurrentPng').addEventListener('click', () => {
       const pageObj = appState.pages[appState.currentPageIndex];
       if (!pageObj) return;
-      const canvas = renderCompositePageCanvas(pageObj);
+      const composite = renderCompositePageCanvas(pageObj);
       const link = document.createElement('a');
-      link.download = `worksheet_page_${appState.currentPageIndex + 1}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.download = `yomiyomi-page-${appState.currentPageIndex + 1}.png`;
+      link.href = composite.toDataURL('image/png');
       link.click();
       $('exportModal').classList.add('hidden');
-      showToast('PNG画像として保存しました');
+      showToast('PNG画像を保存しました');
     });
 
     $('btnDownloadAllPdf').addEventListener('click', () => {
       if (appState.pages.length === 0 || !window.jspdf) return;
+      showToast('PDFを作成しています...');
       const { jsPDF } = window.jspdf;
       let pdf = null;
 
-      appState.pages.forEach((p, idx) => {
-        const canvas = renderCompositePageCanvas(p);
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        const orientation = p.width > p.height ? 'l' : 'p';
+      appState.pages.forEach((pageObj, idx) => {
+        const composite = renderCompositePageCanvas(pageObj);
+        const imgData = composite.toDataURL('image/jpeg', 0.92);
+        const orientation = pageObj.width > pageObj.height ? 'l' : 'p';
+
         if (idx === 0) {
-          pdf = new jsPDF({ orientation, unit: 'px', format: [p.width, p.height] });
+          pdf = new jsPDF({
+            orientation,
+            unit: 'px',
+            format: [pageObj.width, pageObj.height]
+          });
         } else {
-          pdf.addPage([p.width, p.height], orientation);
+          pdf.addPage([pageObj.width, pageObj.height], orientation);
         }
-        pdf.addImage(imgData, 'JPEG', 0, 0, p.width, p.height);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageObj.width, pageObj.height);
       });
 
       if (pdf) {
-        pdf.save('yomikaki_support_worksheet.pdf');
+        pdf.save('yomiyomi-annotated.pdf');
         $('exportModal').classList.add('hidden');
         showToast('全ページをPDFとして保存しました');
       }
