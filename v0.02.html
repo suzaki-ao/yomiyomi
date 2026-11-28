@@ -1,0 +1,3266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>読み読み</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js & jsPDF & Tesseract.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- UDデジタル教科書体に近い読みやすいGoogle Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=M+PLUS+Rounded+1c:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'BIZ UDPGothic', -apple-system, BlinkMacSystemFont, sans-serif;
+      overscroll-behavior: none;
+    }
+    .font-round {
+      font-family: 'M PLUS Rounded 1c', 'BIZ UDPGothic', sans-serif;
+    }
+    .font-ud {
+      font-family: 'BIZ UDPGothic', sans-serif;
+    }
+    /* 分数・数式表示用の美しいスタイル */
+    .math-frac {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      vertical-align: middle;
+      margin: 0 3px;
+      line-height: 1.05;
+    }
+    .math-frac-num {
+      border-bottom: 2px solid currentColor;
+      padding: 0 4px 1px 4px;
+    }
+    .math-frac-den {
+      padding: 1px 4px 0 4px;
+    }
+    /* カスタムスクロールバー */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- ===================================================================== -->
+  <!-- 上部メインツールバー                                                   -->
+  <!-- ===================================================================== -->
+  <header class="bg-white border-b-2 border-slate-200 px-3 py-2 flex items-center justify-between gap-2 flex-wrap shrink-0 z-30 shadow-sm">
+    <!-- 左：アプリタイトル＆読み込み・カメラ・ノート作成 -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex items-center gap-2 pr-1">
+        <div class="bg-blue-600 text-white p-2 rounded-xl shadow-sm">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-round font-extrabold text-base sm:text-lg text-slate-800 leading-tight">読み読み</h1>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 hidden xl:block">LD学習・読み上げ＆ノート支援</p>
+        </div>
+      </div>
+
+      <!-- 新規開く -->
+      <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        <span>ひらく</span>
+        <input type="file" id="fileInputNew" accept="application/pdf,image/*" class="hidden">
+      </label>
+
+      <!-- ページ追加（画像/PDF） -->
+      <label id="btnAppendFileWrapper" class="hidden cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs sm:text-sm font-bold px-2.5 py-2 rounded-xl transition items-center gap-1">
+        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span class="hidden sm:inline">ページ追加</span>
+        <input type="file" id="fileInputAppend" accept="application/pdf,image/*" class="hidden">
+      </label>
+
+      <!-- ノート・計算用紙作成ボタン -->
+      <button id="btnOpenNoteTemplateModal" type="button" class="bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm" title="白紙・コーネル式・計算用紙を追加">
+        <span>📝</span>
+        <span>ノート・計算用紙</span>
+      </button>
+
+      <!-- カメラ撮影ボタン -->
+      <button id="btnOpenCamera" type="button" class="bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="hidden md:inline">カメラ撮影</span>
+      </button>
+    </div>
+
+    <!-- 中央：操作ツール切替（囲んでよむ / ペン手書き / 文字 / 数式） -->
+    <div id="toolModeGroup" class="hidden items-center bg-slate-100 p-1 rounded-xl border border-slate-300 gap-1">
+      <button type="button" data-tool="read" class="tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 bg-blue-600 text-white shadow-sm transition">
+        <span>🔊</span>
+        <span>囲んでよむ</span>
+      </button>
+      <button type="button" data-tool="pen" class="tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 text-slate-700 hover:bg-white transition">
+        <span>🖊️</span>
+        <span>ペン手書き</span>
+      </button>
+      <button type="button" data-tool="text" class="tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 text-slate-700 hover:bg-white transition">
+        <span>✏️</span>
+        <span>文字</span>
+      </button>
+      <button type="button" data-tool="math" class="tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 text-slate-700 hover:bg-white transition">
+        <span class="font-round font-extrabold text-indigo-600 text-sm">½</span>
+        <span>数式</span>
+      </button>
+    </div>
+
+    <!-- 右：読み上げ速度・停止・LD補助・保存 -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- 読み上げ言語モード -->
+      <select id="speechLangMode" class="bg-slate-100 border border-slate-300 rounded-xl px-2 py-1.5 text-xs font-bold text-slate-800" title="読み上げ言語モード">
+        <option value="bilingual">🌐 日英自動</option>
+        <option value="ja-JP">🇯🇵 日本語</option>
+        <option value="en-US">🇺🇸 英語(US)</option>
+        <option value="en-GB">🇬🇧 英語(UK)</option>
+      </select>
+
+      <!-- 読み上げ速度 -->
+      <div class="flex items-center gap-1.5 bg-slate-100 border border-slate-300 px-2.5 py-1.5 rounded-xl">
+        <span class="text-xs font-bold text-slate-600">はやさ</span>
+        <input id="rateSlider" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="w-16 sm:w-20 accent-blue-600 cursor-pointer">
+        <span id="rateLabel" class="text-xs font-extrabold text-blue-700 w-9 text-right">1.0x</span>
+      </div>
+
+      <!-- 停止ボタン -->
+      <button id="btnStopSpeak" type="button" class="bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1 transition">
+        <span>⏹</span>
+        <span class="hidden sm:inline">とめる</span>
+      </button>
+
+      <!-- LDサポート（カラーオーバーレイ＆ルーラー）切替 -->
+      <button id="btnToggleLdAssist" type="button" class="bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 text-xs sm:text-sm font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition" title="読みやすさ補助（色フィルター・ガイド線・英語音声設定）">
+        <span>👓</span>
+        <span class="hidden md:inline">見やすさ補助</span>
+      </button>
+
+      <!-- 保存・書き出し -->
+      <button id="btnExportModal" type="button" class="hidden bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm transition">
+        <span>💾</span>
+        <span class="hidden sm:inline">保存</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- LDサポート（カラーオーバーレイ＆リーディングルーラー＆英語音声）バー    -->
+  <!-- ===================================================================== -->
+  <div id="ldAssistBar" class="hidden bg-purple-50 border-b border-purple-200 px-4 py-2 flex items-center justify-between gap-4 flex-wrap text-xs z-20">
+    <!-- カラーオーバーレイ -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="font-bold text-purple-950">紙の色フィルター：</span>
+      <button type="button" data-tint="none" class="tint-btn px-2.5 py-1 rounded-lg border-2 border-purple-600 bg-white font-bold text-slate-800">なし</button>
+      <button type="button" data-tint="rgba(254, 240, 138, 0.28)" class="tint-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-yellow-100 font-bold text-slate-800">きいろ</button>
+      <button type="button" data-tint="rgba(187, 247, 208, 0.28)" class="tint-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-green-100 font-bold text-slate-800">みどり</button>
+      <button type="button" data-tint="rgba(191, 219, 254, 0.28)" class="tint-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-blue-100 font-bold text-slate-800">みずいろ</button>
+      <button type="button" data-tint="rgba(254, 205, 211, 0.28)" class="tint-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-rose-100 font-bold text-slate-800">ピンク</button>
+    </div>
+
+    <!-- リーディングルーラー -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="font-bold text-purple-950">読む行ガイド線：</span>
+      <button type="button" data-ruler="off" class="ruler-btn px-2.5 py-1 rounded-lg border-2 border-purple-600 bg-white font-bold text-slate-800">OFF</button>
+      <button type="button" data-ruler="horizontal" class="ruler-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-800">横ライン</button>
+      <button type="button" data-ruler="vertical" class="ruler-btn px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-800">縦ライン</button>
+    </div>
+
+    <!-- 英語音声＆句読点区切り・なぞり即読み上げ設定 -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <label class="flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-purple-300 text-xs font-bold text-purple-950">
+        <input type="checkbox" id="chkAutoSpeakOnSelect" checked class="rounded text-blue-600">
+        <span>なぞったらすぐ読む</span>
+      </label>
+      <label class="flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-purple-300 text-xs font-bold text-purple-950" title="句点「。」や読点「、」、ピリオドごとに自然な間（ポーズ）を入れて読み上げます">
+        <input type="checkbox" id="chkPauseAtPunctuation" checked class="rounded text-blue-600">
+        <span>句読点でくぎる</span>
+      </label>
+      <select id="englishVoiceSelect" class="bg-white border border-purple-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 max-w-[190px]" title="英語ネイティブ音声の選択">
+        <option value="">英語音声: 自動（ネイティブ優先）</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- OCR進捗＆読み上げテキストバー                                          -->
+  <!-- ===================================================================== -->
+  <div id="statusSpeechBar" class="hidden bg-slate-800 text-white px-3 py-1.5 flex items-center justify-between gap-3 text-xs shrink-0 z-20">
+    <!-- OCRステータス -->
+    <div class="flex items-center gap-2 shrink-0">
+      <span id="ocrStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600/30 border border-emerald-400/50 text-emerald-200 font-bold">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="ocrStatusText">解析準備完了</span>
+      </span>
+      <select id="docDirectionSelect" class="bg-slate-700 border border-slate-600 rounded-lg px-2 py-0.5 text-xs font-bold text-white" title="文字の向きを変更して再解析">
+        <option value="horizontal">横書き</option>
+        <option value="vertical">縦書き</option>
+      </select>
+      <button id="btnReOcrAll" type="button" class="bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded-lg text-[11px] font-bold border border-slate-500">再解析</button>
+    </div>
+
+    <!-- 現在読み上げ中のテキスト表示・再読み上げ -->
+    <div class="flex-1 flex items-center gap-2 min-w-0">
+      <span class="text-slate-400 shrink-0 font-bold">よみあげ：</span>
+      <input id="spokenTextInput" type="text" placeholder="文字をドラッグでなぞると、ここにテキストが表示されてすぐ読み上げます" class="flex-1 bg-slate-900/90 border border-slate-600 rounded-lg px-2.5 py-1 text-xs sm:text-sm text-amber-200 font-ud focus:outline-none focus:border-blue-400 min-w-0">
+      <button id="btnReplayText" type="button" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1 rounded-lg shrink-0">🔊 もう一度</button>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- メインワークスペース                                                   -->
+  <!-- ===================================================================== -->
+  <main id="workspaceContainer" class="flex-1 flex overflow-hidden relative">
+
+    <!-- 左サイドバー：ページ一覧＆ピン止め管理 -->
+    <aside id="pageSidebar" class="hidden w-36 sm:w-44 bg-white border-r-2 border-slate-200 flex-col shrink-0 z-10 transition-all">
+      <div class="p-2.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs font-extrabold text-slate-700">ページ一覧</span>
+          <span id="pageCountBadge" class="text-[11px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">0枚</span>
+        </div>
+        <button id="btnCollapseSidebar" type="button" class="text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-lg px-1.5 py-0.5 text-xs font-bold" title="ページ一覧を閉じる">◀</button>
+      </div>
+      <div id="thumbnailList" class="flex-1 overflow-y-auto p-2 space-y-2.5"></div>
+    </aside>
+
+    <!-- サイドバーを閉じているときの展開タブボタン -->
+    <button id="btnExpandSidebar" type="button" class="hidden absolute left-2 bottom-4 z-30 bg-white/95 hover:bg-blue-50 text-slate-800 border-2 border-slate-300 shadow-lg rounded-xl px-2.5 py-2 text-xs font-extrabold items-center gap-1 transition" title="ページ一覧をひらく">
+      <span>📑</span>
+      <span>ページ一覧 ▶</span>
+    </button>
+
+    <!-- 中央：メイン表示エリア（ウェルカム画面 または メインページ＆ピン止め分割表示） -->
+    <div id="canvasSplitContainer" class="flex-1 flex overflow-hidden relative bg-slate-200">
+
+      <!-- ウェルカム画面（初期表示） -->
+      <div id="welcomeScreen" class="flex-1 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="max-w-3xl w-full bg-white rounded-3xl shadow-xl border-2 border-slate-200 p-6 sm:p-10 text-center">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 mb-4">
+            <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+          </div>
+          <h2 class="font-round font-extrabold text-2xl sm:text-3xl text-slate-800 mb-2">読み読み</h2>
+          <p class="text-sm sm:text-base text-slate-600 mb-6 leading-relaxed">
+            プリントや教科書を読み込むと、<strong>すべてのページの文字を高速で自動認識</strong>。<br>
+            iPadのように青くなぞるだけで英語も数式も流暢に読み上げ、計算用紙にApple Pencilで手書きできます。
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-2xl shadow-md transition flex flex-col items-center justify-center gap-1.5">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              <span class="text-sm sm:text-base">PDF・画像をひらく</span>
+              <input type="file" id="fileInputWelcome" accept="application/pdf,image/*" class="hidden">
+            </label>
+
+            <button id="btnCameraWelcome" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-2xl shadow-md transition flex flex-col items-center justify-center gap-1.5">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              <span class="text-sm sm:text-base">カメラでプリント撮影</span>
+            </button>
+
+            <button id="btnCalcSheetWelcome" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-4 rounded-2xl shadow-md transition flex flex-col items-center justify-center gap-1.5">
+              <span class="text-2xl">🧮</span>
+              <span class="text-sm sm:text-base">計算用紙・ノートをひらく</span>
+            </button>
+
+            <button id="btnLoadDemoWorksheet" type="button" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-4 rounded-2xl shadow-md transition flex flex-col items-center justify-center gap-1.5">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span class="text-sm sm:text-base">さんすう・英語サンプル</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs text-slate-600">
+            <div>
+              <p class="font-bold text-slate-800 mb-1">1. 向きを選んで全ページ一括OCR</p>
+              <p>縦書き・横書き・自動判定を選ぶと全ページを一気に文字認識して待機時間をなくします。</p>
+            </div>
+            <div>
+              <p class="font-bold text-slate-800 mb-1">2. 青くなぞって即読み上げ</p>
+              <p>単語・1文（。まで）・段落のワンタップ選択や、日英ネイティブ音声・句読点ポーズに対応。</p>
+            </div>
+            <div>
+              <p class="font-bold text-slate-800 mb-1">3. 計算用紙ピン止め＆手書き</p>
+              <p>問題プリントの横に計算用紙やコーネル式ノートをピン止めし、Apple Pencilで手書きできます。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- プライマリビュー（現在のページ） -->
+      <section id="primaryPane" class="hidden flex-1 flex-col min-w-0 overflow-hidden relative" style="flex: 1 1 50%;">
+        <!-- ページ上部コントロールバー -->
+        <div class="bg-white/95 border-b border-slate-300 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-1.5">
+            <button id="btnToggleSidebarHeader" type="button" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-xs border border-slate-300" title="左のページ一覧を開閉">📑</button>
+            <button id="btnPrevPage" type="button" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-xs border border-slate-300">◀ まえ</button>
+            <span id="primaryPageTitle" class="text-xs sm:text-sm font-extrabold text-slate-800 px-1">1 / 1 ページ</span>
+            <button id="btnNextPage" type="button" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-xs border border-slate-300">つぎ ▶</button>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <!-- クイック計算用紙追加＆ピン止め -->
+            <button id="btnQuickPinnedCalc" type="button" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 text-xs font-bold flex items-center gap-1 transition" title="算数・数学用の計算用紙を追加して横にピン止め表示します">
+              <span>🧮</span>
+              <span class="hidden xl:inline">計算用紙を横に開く</span>
+            </button>
+
+            <!-- ページ全体読み上げ -->
+            <button id="btnReadWholePrimary" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm">
+              <span>🔊</span>
+              <span>全部よむ</span>
+            </button>
+
+            <!-- このページをピン止め -->
+            <button id="btnTogglePinPrimary" type="button" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1 transition" title="このページを横にピン止めして並べます">
+              <span>📌</span>
+              <span id="btnPinLabel">ピン止め</span>
+            </button>
+
+            <!-- ズーム操作（メイン画面専用） -->
+            <div class="flex items-center bg-slate-100 rounded-lg border border-slate-300">
+              <button id="btnZoomOut" type="button" class="px-2 py-1 font-bold text-xs hover:bg-slate-200 rounded-l-lg" title="メイン画面を縮小">－</button>
+              <span id="zoomLabel" class="px-2 text-xs font-bold text-slate-700">100%</span>
+              <button id="btnZoomIn" type="button" class="px-2 py-1 font-bold text-xs hover:bg-slate-200 rounded-r-lg" title="メイン画面を拡大">＋</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- スクロールキャンバス領域 -->
+        <div id="primaryScrollArea" class="flex-1 overflow-auto p-4 sm:p-6 flex justify-center items-start relative">
+          <div id="primaryStage" class="relative bg-white shadow-xl rounded-sm select-none" style="transform-origin: top left;">
+            <!-- 下地キャンバス（PDF/画像） -->
+            <canvas id="primaryBaseCanvas" class="block pointer-events-none"></canvas>
+            <!-- Apple Pencil・手書きメモキャンバス -->
+            <canvas id="primaryInkCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+            <!-- OCRハイライト＆ドラッグ選択枠キャンバス -->
+            <canvas id="primaryOverlayCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+            <!-- カラーオーバーレイ（まぶしさ防止フィルター） -->
+            <div id="primaryTintLayer" class="absolute inset-0 pointer-events-none transition-colors duration-200"></div>
+            <!-- テキスト・数式注釈レイヤー -->
+            <div id="primaryAnnotationLayer" class="absolute inset-0 overflow-hidden"></div>
+            <!-- iPad風選択ハンドル＆フローティングメニューレイヤー -->
+            <div id="primarySelectionUILayer" class="absolute inset-0 pointer-events-none z-30"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ピン止めペイン幅リサイズ用ドラッグスプリッター -->
+      <div id="splitResizer" class="hidden w-3 bg-amber-300 hover:bg-amber-500 active:bg-blue-600 cursor-col-resize shrink-0 z-30 flex items-center justify-center transition-colors select-none touch-none" title="左右にドラッグしてピン止め画面の大きさを変更">
+        <div class="w-1 h-12 rounded-full bg-amber-700/70 pointer-events-none"></div>
+      </div>
+
+      <!-- ピン止め比較ビュー（ピン止め中のみ右側に分割表示・独立ズーム＆幅リサイズ対応） -->
+      <section id="pinnedPane" class="hidden flex-col min-w-0 overflow-hidden bg-amber-50/40 relative" style="flex: 0 0 46%;">
+        <div class="bg-amber-100 border-b border-amber-300 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0 flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm">📌</span>
+            <span id="pinnedPageTitle" class="text-xs sm:text-sm font-extrabold text-amber-950">ピン止め：1ページ</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <!-- ピン止め幅プリセット（広げる・半分・狭める） -->
+            <div class="hidden sm:flex items-center bg-white/80 rounded-lg border border-amber-300 text-[11px] font-bold">
+              <button type="button" data-pin-ratio="35" class="pin-ratio-btn px-1.5 py-1 hover:bg-amber-100 rounded-l-lg" title="ピン止め画面を細くする">細</button>
+              <button type="button" data-pin-ratio="50" class="pin-ratio-btn px-1.5 py-1 hover:bg-amber-100 border-x border-amber-200" title="左右均等にする">半</button>
+              <button type="button" data-pin-ratio="68" class="pin-ratio-btn px-1.5 py-1 hover:bg-amber-100 rounded-r-lg" title="ピン止め画面を大きく広げる">広</button>
+            </div>
+            <!-- ピン止め画面専用 独立ズーム操作 -->
+            <div class="flex items-center bg-white rounded-lg border border-amber-300">
+              <button id="btnPinnedZoomOut" type="button" class="px-2 py-1 font-bold text-xs text-amber-950 hover:bg-amber-100 rounded-l-lg" title="ピン止め画面を縮小">－</button>
+              <span id="pinnedZoomLabel" class="px-2 text-xs font-bold text-amber-950">100%</span>
+              <button id="btnPinnedZoomIn" type="button" class="px-2 py-1 font-bold text-xs text-amber-950 hover:bg-amber-100 rounded-r-lg" title="ピン止め画面を拡大">＋</button>
+            </div>
+            <button id="btnReadWholePinned" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm">
+              <span>🔊</span>
+              <span>全部よむ</span>
+            </button>
+            <button id="btnClosePinnedPane" type="button" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-200 text-amber-950 border border-amber-300 text-xs font-bold">
+              ✕ 閉じる
+            </button>
+          </div>
+        </div>
+
+        <div id="pinnedScrollArea" class="flex-1 overflow-auto p-4 sm:p-6 flex justify-center items-start relative">
+          <div id="pinnedStage" class="relative bg-white shadow-xl rounded-sm select-none">
+            <canvas id="pinnedBaseCanvas" class="block pointer-events-none"></canvas>
+            <canvas id="pinnedInkCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+            <canvas id="pinnedOverlayCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+            <div id="pinnedTintLayer" class="absolute inset-0 pointer-events-none transition-colors duration-200"></div>
+            <div id="pinnedAnnotationLayer" class="absolute inset-0 overflow-hidden"></div>
+            <div id="pinnedSelectionUILayer" class="absolute inset-0 pointer-events-none z-30"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- リーディングルーラー（追従ガイド線） -->
+      <div id="readingRulerEl" class="hidden pointer-events-none fixed z-40 bg-amber-300/35 border-y-2 border-amber-500 shadow-sm"></div>
+    </div>
+
+    <!-- 右側：ペン手書き・テキスト・かんたん数式プロパティパネル -->
+    <aside id="editorSidePanel" class="hidden w-80 sm:w-96 bg-white border-l-2 border-slate-200 flex-col shrink-0 z-20 overflow-y-auto">
+      
+      <!-- 0. Apple Pencil・手書きペン設定パネル -->
+      <div id="penToolPanel" class="hidden p-4 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 class="font-round font-extrabold text-base text-slate-800 flex items-center gap-1.5">
+            <span>🖊️</span> <span>Apple Pencil・ペン手書き</span>
+          </h3>
+          <button type="button" class="close-side-panel text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 leading-relaxed">
+          Apple Pencil・指・マウスで直接メモや筆算を書き込めます。筆圧にも対応しています。
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">ペンのしゅるい</label>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" data-pen-kind="pen" class="pen-kind-btn py-2 px-2 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold text-xs flex flex-col items-center gap-0.5">
+              <span>🖊️</span><span>ペン</span>
+            </button>
+            <button type="button" data-pen-kind="marker" class="pen-kind-btn py-2 px-2 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex flex-col items-center gap-0.5">
+              <span>🖍️</span><span>マーカー</span>
+            </button>
+            <button type="button" data-pen-kind="eraser" class="pen-kind-btn py-2 px-2 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex flex-col items-center gap-0.5">
+              <span>🧽</span><span>消しゴム</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">ペンの色</label>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" data-pcolor="#0f172a" class="pcolor-btn w-8 h-8 rounded-full bg-slate-900 ring-2 ring-offset-2 ring-blue-500" title="くろ"></button>
+            <button type="button" data-pcolor="#dc2626" class="pcolor-btn w-8 h-8 rounded-full bg-red-600" title="あか"></button>
+            <button type="button" data-pcolor="#2563eb" class="pcolor-btn w-8 h-8 rounded-full bg-blue-600" title="あお"></button>
+            <button type="button" data-pcolor="#059669" class="pcolor-btn w-8 h-8 rounded-full bg-emerald-600" title="みどり"></button>
+            <button type="button" data-pcolor="#f59e0b" class="pcolor-btn w-8 h-8 rounded-full bg-amber-400" title="きいろ"></button>
+            <button type="button" data-pcolor="#ec4899" class="pcolor-btn w-8 h-8 rounded-full bg-pink-500" title="ピンク"></button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+            <span>ふとさ</span>
+            <span id="penWidthLabel" class="font-mono text-blue-700">4px</span>
+          </div>
+          <input id="penWidthSlider" type="range" min="2" max="24" step="1" value="4" class="w-full cursor-pointer">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+          <button id="btnUndoInk" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1">
+            <span>↩️</span> <span>1つ戻す</span>
+          </button>
+          <button id="btnClearCurrentInk" type="button" class="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1 shadow-sm" title="このページの手書きをワンボタンで消去します">
+            <span>🧹</span> <span>手書きを全消し</span>
+          </button>
+        </div>
+        <button id="btnClearPinnedInk" type="button" class="w-full bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1">
+          <span>📌🧹</span> <span>ピン止め側の計算用紙をワンボタンでクリア</span>
+        </button>
+      </div>
+
+      <!-- A. テキスト書き込み設定パネル -->
+      <div id="textToolPanel" class="hidden p-4 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 class="font-round font-extrabold text-base text-slate-800 flex items-center gap-1.5">
+            <span>✏️</span> <span>UDフォントで文字をかく</span>
+          </h3>
+          <button type="button" class="close-side-panel text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 leading-relaxed">
+          プリントの<strong>書きこみたい場所をタップ（クリック）</strong>するか、下のボタンを押して追加できます。
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">かく文字</label>
+          <textarea id="annoTextInput" rows="3" placeholder="こたえや メモを 入力してね" class="w-full border-2 border-slate-300 focus:border-blue-500 rounded-xl p-2.5 text-base font-ud focus:outline-none"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">文字の大きさ</label>
+            <select id="annoFontSize" class="w-full border border-slate-300 rounded-xl p-2 text-sm font-bold bg-white">
+              <option value="20">ちいさい (20px)</option>
+              <option value="28" selected>ふつう (28px)</option>
+              <option value="38">おおきい (38px)</option>
+              <option value="52">特大 (52px)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">文字の向き</label>
+            <select id="annoWritingDir" class="w-full border border-slate-300 rounded-xl p-2 text-sm font-bold bg-white">
+              <option value="horizontal">よこ書き</option>
+              <option value="vertical">たて書き</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">文字の色</label>
+          <div class="flex items-center gap-2">
+            <button type="button" data-tcolor="#0f172a" class="tcolor-btn w-8 h-8 rounded-full bg-slate-900 ring-2 ring-offset-2 ring-blue-500"></button>
+            <button type="button" data-tcolor="#dc2626" class="tcolor-btn w-8 h-8 rounded-full bg-red-600"></button>
+            <button type="button" data-tcolor="#2563eb" class="tcolor-btn w-8 h-8 rounded-full bg-blue-600"></button>
+            <button type="button" data-tcolor="#059669" class="tcolor-btn w-8 h-8 rounded-full bg-emerald-600"></button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">背景ふせん色</label>
+          <div class="flex items-center gap-2">
+            <button type="button" data-tbg="transparent" class="tbg-btn px-2.5 py-1 rounded-lg border-2 border-blue-500 text-xs font-bold bg-white">とうめい</button>
+            <button type="button" data-tbg="rgba(255,255,255,0.92)" class="tbg-btn px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-bold bg-white">しろ</button>
+            <button type="button" data-tbg="rgba(254,249,195,0.95)" class="tbg-btn px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-bold bg-yellow-100">きいろ</button>
+          </div>
+        </div>
+
+        <button id="btnInsertTextCenter" type="button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md text-sm">
+          ＋ ページの真ん中に追加する
+        </button>
+      </div>
+
+      <!-- B. 子ども向け「かんたん数式」ビルダーパネル -->
+      <div id="mathToolPanel" class="hidden p-4 space-y-3">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 class="font-round font-extrabold text-base text-indigo-900 flex items-center gap-1.5">
+            <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg">½</span>
+            <span>かんたん数式メーカー</span>
+          </h3>
+          <button type="button" class="close-side-panel text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+        </div>
+
+        <!-- リアルタイム数式プレビュー＆音声読み上げ確認 -->
+        <div class="bg-indigo-50/70 border-2 border-indigo-300 rounded-2xl p-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] font-bold text-indigo-800">いま作っている式（クリックで編集）</span>
+            <button id="btnSpeakMathPreview" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <span>🔊</span> <span>よみ確認</span>
+            </button>
+          </div>
+          <div id="mathVisualPreview" class="min-h-[56px] bg-white rounded-xl border border-indigo-200 px-3 py-2 flex items-center flex-wrap gap-1 text-2xl font-bold text-slate-900 overflow-x-auto">
+            <span class="text-xs text-slate-400 font-normal">下のボタンで数字や記号をえらんでね</span>
+          </div>
+          <p id="mathReadingPreview" class="text-[11px] text-indigo-700 mt-1.5 font-bold truncate">よみかた：</p>
+        </div>
+
+        <!-- 特殊ブロック（分数・帯分数・累乗・ルート）編集エリア -->
+        <div id="mathSpecialEditor" class="hidden bg-amber-50 border-2 border-amber-300 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span id="mathSpecialTitle" class="text-xs font-extrabold text-amber-900">分数を入力</span>
+            <button id="btnCloseSpecialEditor" type="button" class="text-xs font-bold text-amber-800 underline">完了</button>
+          </div>
+          <div id="mathSpecialInputs" class="flex items-center gap-2 justify-center"></div>
+        </div>
+
+        <!-- 数字＆基本記号キーパッド -->
+        <div>
+          <p class="text-[11px] font-bold text-slate-500 mb-1">数字・文字</p>
+          <div class="grid grid-cols-6 gap-1">
+            <button type="button" data-mtoken="7" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">7</button>
+            <button type="button" data-mtoken="8" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">8</button>
+            <button type="button" data-mtoken="9" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">9</button>
+            <button type="button" data-mtoken="＋" class="math-key bg-blue-100 hover:bg-blue-200 text-blue-900 font-extrabold py-2 rounded-lg text-base">＋</button>
+            <button type="button" data-mtoken="－" class="math-key bg-blue-100 hover:bg-blue-200 text-blue-900 font-extrabold py-2 rounded-lg text-base">－</button>
+            <button type="button" id="btnMathBackspace" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold py-2 rounded-lg text-xs">1字消す</button>
+
+            <button type="button" data-mtoken="4" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">4</button>
+            <button type="button" data-mtoken="5" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">5</button>
+            <button type="button" data-mtoken="6" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">6</button>
+            <button type="button" data-mtoken="×" class="math-key bg-blue-100 hover:bg-blue-200 text-blue-900 font-extrabold py-2 rounded-lg text-base">×</button>
+            <button type="button" data-mtoken="÷" class="math-key bg-blue-100 hover:bg-blue-200 text-blue-900 font-extrabold py-2 rounded-lg text-base">÷</button>
+            <button type="button" id="btnMathClear" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded-lg text-xs">クリア</button>
+
+            <button type="button" data-mtoken="1" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">1</button>
+            <button type="button" data-mtoken="2" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">2</button>
+            <button type="button" data-mtoken="3" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">3</button>
+            <button type="button" data-mtoken="＝" class="math-key bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold py-2 rounded-lg text-base">＝</button>
+            <button type="button" data-mtoken="(" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">(</button>
+            <button type="button" data-mtoken=")" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">)</button>
+
+            <button type="button" data-mtoken="0" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">0</button>
+            <button type="button" data-mtoken="." class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-base">.</button>
+            <button type="button" data-mtoken="x" class="math-key bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold italic py-2 rounded-lg text-base">x</button>
+            <button type="button" data-mtoken="y" class="math-key bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold italic py-2 rounded-lg text-base">y</button>
+            <button type="button" data-mtoken="＜" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-sm">＜</button>
+            <button type="button" data-mtoken="＞" class="math-key bg-slate-100 hover:bg-slate-200 font-bold py-2 rounded-lg text-sm">＞</button>
+          </div>
+        </div>
+
+        <!-- 子どもでもワンタップで追加できる「分数・帯分数・累乗・ルート」テンプレート -->
+        <div>
+          <p class="text-[11px] font-bold text-slate-500 mb-1">かんたん分数・特殊な形</p>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" id="btnAddFraction" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold py-2 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-indigo-300">
+              <span class="inline-flex flex-col items-center leading-none text-[10px]"><span class="border-b border-indigo-900 px-1">□</span><span>□</span></span>
+              <span>分数（ぶんすう）</span>
+            </button>
+            <button type="button" id="btnAddMixedFraction" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold py-2 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-indigo-300">
+              <span class="font-extrabold text-sm">□</span>
+              <span class="inline-flex flex-col items-center leading-none text-[10px]"><span class="border-b border-indigo-900 px-1">□</span><span>□</span></span>
+              <span>帯分数</span>
+            </button>
+            <button type="button" id="btnAddPower" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold py-2 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-indigo-300">
+              <span class="font-extrabold text-sm">x<sup class="text-[10px]">2</sup></span>
+              <span>るい乗（〇乗）</span>
+            </button>
+            <button type="button" id="btnAddSqrt" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold py-2 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-indigo-300">
+              <span class="font-extrabold text-sm">√□</span>
+              <span>ルート（平方根）</span>
+            </button>
+          </div>
+        </div>
+
+        <button id="btnPlaceMathOnPage" type="button" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md text-sm flex items-center justify-center gap-1.5">
+          <span>✨</span> <span>この数式をプリントにはりつける</span>
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- モーダル群                                                             -->
+  <!-- ===================================================================== -->
+
+  <!-- [モーダル A] 読み込み時の「横書き・縦書き・自動判定」選択ダイアログ -->
+  <div id="directionChoiceModal" class="hidden fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border-2 border-blue-200 text-center space-y-5">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-100 text-blue-600 mx-auto">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+      </div>
+      <div>
+        <h3 class="font-round font-extrabold text-xl sm:text-2xl text-slate-900 mb-1">文字の向きをえらんでください</h3>
+        <p id="directionModalDesc" class="text-xs sm:text-sm text-slate-600">
+          選択すると、<strong>すべてのページの文字を一括で高速解析</strong>し、なぞった瞬間にすぐ読み上げできるようになります。
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button type="button" data-dir-choice="horizontal" class="dir-choice-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-3 rounded-2xl shadow-md transition flex flex-col items-center gap-1.5">
+          <span class="text-2xl">➡️</span>
+          <span class="text-base">横書き</span>
+          <span class="text-[11px] text-blue-100 font-normal">算数・英語・理科など</span>
+        </button>
+
+        <button type="button" data-dir-choice="vertical" class="dir-choice-btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-3 rounded-2xl shadow-md transition flex flex-col items-center gap-1.5">
+          <span class="text-2xl">⬇️</span>
+          <span class="text-base">縦書き</span>
+          <span class="text-[11px] text-emerald-100 font-normal">国語の教科書・物語など</span>
+        </button>
+
+        <button type="button" data-dir-choice="auto" class="dir-choice-btn bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-3 rounded-2xl shadow-md transition flex flex-col items-center gap-1.5">
+          <span class="text-2xl">✨</span>
+          <span class="text-base">自動で判定</span>
+          <span class="text-[11px] text-purple-100 font-normal">AIが向きを自動チェック</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [モーダル B] カメラ撮影モーダル -->
+  <div id="cameraModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-round font-extrabold text-lg text-slate-900 flex items-center gap-2">
+          <span>📷</span> <span>プリント・教科書を撮影して追加</span>
+        </h3>
+        <button id="btnCloseCamera" type="button" class="text-slate-500 hover:text-slate-800 font-bold text-lg px-2">✕</button>
+      </div>
+
+      <div class="relative bg-black rounded-2xl overflow-hidden aspect-[4/3] flex items-center justify-center">
+        <video id="cameraVideo" autoplay playsinline class="w-full h-full object-contain"></video>
+        <div id="cameraFallbackBox" class="hidden text-center p-6 text-white space-y-3">
+          <p class="text-sm">カメラのプレビューを起動できませんでした。<br>下のボタンから端末のカメラ・写真アプリで撮影できます。</p>
+          <label class="inline-block cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-3 rounded-xl">
+            📷 カメラ / 写真を選択する
+            <input type="file" id="cameraNativeFallbackInput" accept="image/*" capture="environment" class="hidden">
+          </label>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <button id="btnSwitchCamera" type="button" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm">
+          🔄 カメラ切替
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="btnSnapNewDoc" type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow">
+            📸 撮影して新しく開く
+          </button>
+          <button id="btnSnapAppendPage" type="button" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow">
+            ➕ 撮影してページ追加
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- [モーダル C] 保存・書き出しモーダル -->
+  <div id="exportModal" class="hidden fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-round font-extrabold text-lg text-slate-900">💾 書き込んだプリントを保存</h3>
+        <button id="btnCloseExport" type="button" class="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+      </div>
+      <p class="text-xs text-slate-600">手書きメモ・テキスト・数式を合成した状態で保存できます。</p>
+      <div class="space-y-2.5">
+        <button id="btnDownloadCurrentPng" type="button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow">
+          <span>🖼️</span> <span>いま開いているページを画像 (PNG) で保存</span>
+        </button>
+        <button id="btnDownloadAllPdf" type="button" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow">
+          <span>📄</span> <span>全ページをまとめて PDF で保存</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [モーダル D] ノート・計算用紙テンプレート作成モーダル -->
+  <div id="noteTemplateModal" class="hidden fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border-2 border-amber-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-round font-extrabold text-lg sm:text-xl text-slate-900 flex items-center gap-2">
+          <span>📝</span> <span>ノート・計算用紙を追加する</span>
+        </h3>
+        <button id="btnCloseNoteTemplate" type="button" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+      </div>
+      <p class="text-xs text-slate-600">
+        使いたい用紙の形式を選んでください。追加した用紙は<strong>ピン止め（📌）して問題プリントと並べて計算やメモ</strong>ができます。
+      </p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        <button type="button" data-note-tpl="calc_grid" class="note-tpl-btn bg-indigo-50 hover:bg-indigo-600 text-indigo-950 hover:text-white border-2 border-indigo-400 rounded-2xl p-3.5 text-left transition shadow-sm">
+          <div class="text-xl mb-1">🧮</div>
+          <div class="font-round font-extrabold text-sm">算数・数学 計算用紙</div>
+          <div class="text-[11px] opacity-80 mt-0.5">筆算・図形に便利な方眼マス目</div>
+        </button>
+
+        <button type="button" data-note-tpl="cornell" class="note-tpl-btn bg-amber-50 hover:bg-amber-600 text-amber-950 hover:text-white border-2 border-amber-400 rounded-2xl p-3.5 text-left transition shadow-sm">
+          <div class="text-xl mb-1">📐</div>
+          <div class="font-round font-extrabold text-sm">コーネル式ノート</div>
+          <div class="text-[11px] opacity-80 mt-0.5">キーワード・ノート・まとめの3分割</div>
+        </button>
+
+        <button type="button" data-note-tpl="blank" class="note-tpl-btn bg-slate-50 hover:bg-slate-800 text-slate-900 hover:text-white border-2 border-slate-300 rounded-2xl p-3.5 text-left transition shadow-sm">
+          <div class="text-xl mb-1">📄</div>
+          <div class="font-round font-extrabold text-sm">白紙（むじ）</div>
+          <div class="text-[11px] opacity-80 mt-0.5">自由なイラスト・マインドマップに</div>
+        </button>
+
+        <button type="button" data-note-tpl="lined" class="note-tpl-btn bg-blue-50 hover:bg-blue-600 text-blue-950 hover:text-white border-2 border-blue-300 rounded-2xl p-3.5 text-left transition shadow-sm">
+          <div class="text-xl mb-1">📓</div>
+          <div class="font-round font-extrabold text-sm">よこ罫線ノート</div>
+          <div class="text-[11px] opacity-80 mt-0.5">英語の練習や文章のまとめに</div>
+        </button>
+
+        <button type="button" data-note-tpl="vertical_genkou" class="note-tpl-btn bg-emerald-50 hover:bg-emerald-600 text-emerald-950 hover:text-white border-2 border-emerald-300 rounded-2xl p-3.5 text-left transition shadow-sm">
+          <div class="text-xl mb-1">🎋</div>
+          <div class="font-round font-extrabold text-sm">たて書きノート</div>
+          <div class="text-[11px] opacity-80 mt-0.5">国語の感想文や漢字練習に</div>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
+        <label class="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+          <input type="checkbox" id="chkPinCreatedNote" checked class="rounded text-amber-500 w-4 h-4">
+          <span>追加したらすぐにピン止め（📌）して横に並べる</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toastBanner" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs sm:text-sm font-bold z-50 border border-slate-700 pointer-events-none"></div>
+
+  <!-- ===================================================================== -->
+  <!-- メインアプリケーションスクリプト                                       -->
+  <!-- ===================================================================== -->
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const $ = (id) => document.getElementById(id);
+
+    const appState = {
+      pages: [],
+      currentPageIndex: 0,
+      pinnedPageIndex: null,
+      isSplitPinOpen: false,
+      isSidebarCollapsed: false,
+      pinnedPanePercent: 46,
+      primaryZoom: 0.72,
+      pinnedZoom: 0.72,
+      direction: 'horizontal', // 'horizontal' | 'vertical'
+      toolMode: 'read',        // 'read' | 'pen' | 'text' | 'math'
+      tintColor: 'none',
+      rulerMode: 'off',        // 'off' | 'horizontal' | 'vertical'
+      speechRate: 1.0,
+      preferredEnglishVoiceURI: '',
+
+      // 選択状態（iPad風範囲選択・ハンドル調整）
+      selection: null, // { paneType, pageIdx, startIdx, endIdx, orderedWords }
+      activeSpokenWord: null,
+      speechRunId: 0,
+      fallbackHighlightTimer: null,
+
+      // OCRワーカー管理
+      ocrQueueId: 0,
+      ocrWorkers: [],
+
+      // テキスト・ペン・数式ビルダー状態
+      textOptions: {
+        color: '#0f172a',
+        bg: 'transparent'
+      },
+      penOptions: {
+        kind: 'pen',
+        color: '#0f172a',
+        width: 4
+      },
+      mathTokens: [],
+      editingMathTokenIndex: null,
+      selectedAnnotationId: null
+    };
+
+    function generateId() {
+      return 'id_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now();
+    }
+
+    let toastTimeout = null;
+    function showToast(msg, duration = 2600) {
+      const el = $('toastBanner');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        el.classList.add('hidden');
+      }, duration);
+    }
+
+    /**
+     * =========================================================================
+     * 1. PDF・画像・デモワークシート読み込み ＆ 向き選択ダイアログ
+     * =========================================================================
+     */
+    let pendingLoadMode = 'new'; // 'new' | 'append'
+    let pendingStartIndex = 0;
+
+    async function handleFilesSelected(files, mode = 'new') {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+
+      try {
+        showToast('ファイルを読み込んでいます...');
+        const newPages = [];
+
+        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          for (let p = 1; p <= pdfDoc.numPages; p++) {
+            const page = await pdfDoc.getPage(p);
+            const viewport = page.getViewport({ scale: 1.75 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(viewport.width);
+            canvas.height = Math.round(viewport.height);
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            newPages.push({
+              id: generateId(),
+              baseCanvas: canvas,
+              inkStrokes: [],
+              width: canvas.width,
+              height: canvas.height,
+              ocrWords: [],
+              ocrDone: false,
+              pinned: false,
+              annotations: []
+            });
+          }
+        } else if (file.type.startsWith('image/')) {
+          const canvas = await imageFileToCanvas(file);
+          newPages.push({
+            id: generateId(),
+            baseCanvas: canvas,
+            inkStrokes: [],
+            width: canvas.width,
+            height: canvas.height,
+            ocrWords: [],
+            ocrDone: false,
+            pinned: false,
+            annotations: []
+          });
+        } else {
+          showToast('PDF または画像ファイルを選択してください');
+          return;
+        }
+
+        if (mode === 'new' || appState.pages.length === 0) {
+          appState.pages = newPages;
+          appState.currentPageIndex = 0;
+          appState.pinnedPageIndex = null;
+          appState.isSplitPinOpen = false;
+          appState.selection = null;
+          pendingStartIndex = 0;
+        } else {
+          pendingStartIndex = appState.pages.length;
+          appState.pages.push(...newPages);
+          appState.currentPageIndex = pendingStartIndex;
+        }
+
+        pendingLoadMode = mode;
+        activateWorkspaceUI();
+        renderAllViews();
+
+        $('directionModalDesc').innerHTML = `<strong>${newPages.length}ページ</strong>を読み込みました。向きを選ぶと<strong>全ページの文字を一括で高速解析</strong>します。`;
+        $('directionChoiceModal').classList.remove('hidden');
+      } catch (err) {
+        console.error(err);
+        showToast('ファイルの読み込み中にエラーが発生しました');
+      }
+    }
+
+    function imageFileToCanvas(fileOrBlob) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(fileOrBlob);
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1800;
+          let w = img.naturalWidth;
+          let h = img.naturalHeight;
+          if (w > maxDim || h > maxDim) {
+            const scale = maxDim / Math.max(w, h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          resolve(canvas);
+        };
+        img.onerror = (e) => {
+          URL.revokeObjectURL(url);
+          reject(e);
+        };
+        img.src = url;
+      });
+    }
+
+    function activateWorkspaceUI() {
+      $('welcomeScreen').classList.add('hidden');
+      updateSidebarVisibility();
+      $('primaryPane').classList.remove('hidden');
+      $('primaryPane').classList.add('flex');
+      $('toolModeGroup').classList.remove('hidden');
+      $('toolModeGroup').classList.add('flex');
+      $('statusSpeechBar').classList.remove('hidden');
+      $('statusSpeechBar').classList.add('flex');
+      $('btnAppendFileWrapper').classList.remove('hidden');
+      $('btnAppendFileWrapper').classList.add('flex');
+      $('btnExportModal').classList.remove('hidden');
+      $('btnExportModal').classList.add('flex');
+      $('btnSnapAppendPage').classList.remove('hidden');
+    }
+
+    function updateSidebarVisibility() {
+      if (appState.pages.length === 0) return;
+      if (appState.isSidebarCollapsed) {
+        $('pageSidebar').classList.add('hidden');
+        $('pageSidebar').classList.remove('flex');
+        $('btnExpandSidebar').classList.remove('hidden');
+        $('btnExpandSidebar').classList.add('flex');
+      } else {
+        $('pageSidebar').classList.remove('hidden');
+        $('pageSidebar').classList.add('flex');
+        $('btnExpandSidebar').classList.add('hidden');
+        $('btnExpandSidebar').classList.remove('flex');
+      }
+    }
+
+    function toggleSidebarCollapsed() {
+      appState.isSidebarCollapsed = !appState.isSidebarCollapsed;
+      updateSidebarVisibility();
+    }
+
+    $('btnCollapseSidebar').addEventListener('click', toggleSidebarCollapsed);
+    $('btnExpandSidebar').addEventListener('click', toggleSidebarCollapsed);
+    $('btnToggleSidebarHeader').addEventListener('click', toggleSidebarCollapsed);
+
+    ['fileInputNew', 'fileInputWelcome'].forEach(id => {
+      $(id).addEventListener('change', (e) => {
+        handleFilesSelected(e.target.files, 'new');
+        e.target.value = '';
+      });
+    });
+
+    $('fileInputAppend').addEventListener('change', (e) => {
+      handleFilesSelected(e.target.files, 'append');
+      e.target.value = '';
+    });
+
+    // 向き選択ダイアログのボタン処理
+    document.querySelectorAll('.dir-choice-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const choice = btn.dataset.dirChoice;
+        $('directionChoiceModal').classList.add('hidden');
+
+        if (choice === 'auto') {
+          updateOcrStatus('向きを自動判定中...', true);
+          const detected = await detectWritingDirectionAuto(appState.pages[pendingStartIndex]);
+          appState.direction = detected;
+          $('docDirectionSelect').value = detected;
+          showToast(`自動判定の結果：「${detected === 'vertical' ? '縦書き' : '横書き'}」で全ページを解析します`);
+        } else {
+          appState.direction = choice;
+          $('docDirectionSelect').value = choice;
+        }
+
+        startBatchOcrFromIndex(pendingStartIndex);
+      });
+    });
+
+    $('docDirectionSelect').addEventListener('change', (e) => {
+      appState.direction = e.target.value;
+      appState.selection = null;
+      startBatchOcrFromIndex(0);
+    });
+
+    $('btnReOcrAll').addEventListener('click', () => {
+      appState.selection = null;
+      startBatchOcrFromIndex(0);
+    });
+
+    // サンプルワークシート（算数・英語・縦書き国語の3ページ）
+    $('btnLoadDemoWorksheet').addEventListener('click', () => {
+      const c1 = document.createElement('canvas');
+      c1.width = 1000;
+      c1.height = 1350;
+      const ctx1 = c1.getContext('2d', { willReadFrequently: true });
+      ctx1.fillStyle = '#ffffff';
+      ctx1.fillRect(0, 0, 1000, 1350);
+      ctx1.strokeStyle = '#94a3b8';
+      ctx1.lineWidth = 3;
+      ctx1.strokeRect(40, 40, 920, 1270);
+
+      ctx1.fillStyle = '#1e293b';
+      ctx1.font = 'bold 34px "BIZ UDPGothic", sans-serif';
+      ctx1.fillText('さんすう・数学 読み上げテストプリント', 80, 110);
+
+      ctx1.font = '26px "BIZ UDPGothic", sans-serif';
+      const p1Lines = [
+        '【もんだい 1】 分数と 計算の しきを なぞって 聞いてみよう！',
+        '1/2 + 3/4 = 5/4',
+        '2 1/3 - 1/3 = 2',
+        '12 × 3 ÷ 4 = 9',
+        '',
+        '【もんだい 2】 中学数学の しき・ルート・図形も 読めます！',
+        '3x + 5 = 20',
+        'x² + 2x + 1 = (x + 1)²',
+        '√16 = 4 , ∠ABC = 90° , △ABC ∽ △DEF'
+      ];
+      p1Lines.forEach((line, i) => {
+        ctx1.fillText(line, 80, 185 + i * 54);
+      });
+
+      ctx1.strokeStyle = '#3b82f6';
+      ctx1.lineWidth = 2;
+      ctx1.strokeRect(80, 720, 840, 220);
+      ctx1.fillStyle = '#64748b';
+      ctx1.font = '22px "BIZ UDPGothic", sans-serif';
+      ctx1.fillText('（上の「計算用紙を横に開く」でひっ算メモも並べて使えます）', 100, 760);
+
+      // 2ページ目：英語教科書サンプル
+      const c2 = document.createElement('canvas');
+      c2.width = 1000;
+      c2.height = 1350;
+      const ctx2 = c2.getContext('2d', { willReadFrequently: true });
+      ctx2.fillStyle = '#ffffff';
+      ctx2.fillRect(0, 0, 1000, 1350);
+      ctx2.strokeStyle = '#94a3b8';
+      ctx2.lineWidth = 3;
+      ctx2.strokeRect(40, 40, 920, 1270);
+
+      ctx2.fillStyle = '#0f172a';
+      ctx2.font = 'bold 34px "BIZ UDPGothic", sans-serif';
+      ctx2.fillText('English Reading & Phonics (英語のれんしゅう)', 80, 110);
+
+      ctx2.font = '26px "BIZ UDPGothic", sans-serif';
+      const p2Lines = [
+        '次の英文を iPad のように 青くなぞって 聞いてみましょう。',
+        '',
+        'Hello! My name is Ken. I live in Nagoya.',
+        'I like reading books and playing soccer with my friends.',
+        'Every morning, I eat an apple and drink milk.',
+        '',
+        '【重要単語】',
+        'library（図書館） / science（理科） / wonderful（すばらしい）'
+      ];
+      p2Lines.forEach((line, i) => {
+        ctx2.fillText(line, 80, 190 + i * 54);
+      });
+
+      // 3ページ目：縦書き（こくご ものがたり）
+      const c3 = document.createElement('canvas');
+      c3.width = 1000;
+      c3.height = 1350;
+      const ctx3 = c3.getContext('2d', { willReadFrequently: true });
+      ctx3.fillStyle = '#ffffff';
+      ctx3.fillRect(0, 0, 1000, 1350);
+      ctx3.strokeStyle = '#94a3b8';
+      ctx3.lineWidth = 3;
+      ctx3.strokeRect(40, 40, 920, 1270);
+
+      const drawVert = (txt, x, y, step) => {
+        for (let i = 0; i < txt.length; i++) {
+          ctx3.fillText(txt[i], x, y + i * step);
+        }
+      };
+      ctx3.fillStyle = '#0f172a';
+      ctx3.font = 'bold 34px "BIZ UDPGothic", sans-serif';
+      drawVert('こくごの ものがたり', 860, 110, 44);
+
+      ctx3.font = '28px "BIZ UDPGothic", sans-serif';
+      drawVert('むかしむかし、あるところに', 770, 110, 42);
+      drawVert('やさしい きつねが すんでいました。', 705, 110, 42);
+      drawVert('もりで まよった こりすを みつけると、', 640, 110, 42);
+      drawVert('あたたかい おうちまで おくってあげました。', 575, 110, 42);
+      drawVert('青いなぞり選択の 両端にある 丸いハンドルを', 470, 110, 42);
+      drawVert('動かすと、読む範囲を 自由に 調整できます。', 405, 110, 42);
+
+      appState.pages = [
+        { id: generateId(), baseCanvas: c1, inkStrokes: [], width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] },
+        { id: generateId(), baseCanvas: c2, inkStrokes: [], width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] },
+        { id: generateId(), baseCanvas: c3, inkStrokes: [], width: 1000, height: 1350, ocrWords: [], ocrDone: false, pinned: false, annotations: [] }
+      ];
+      appState.currentPageIndex = 0;
+      appState.pinnedPageIndex = null;
+      appState.isSplitPinOpen = false;
+      appState.selection = null;
+      appState.direction = 'horizontal';
+      $('docDirectionSelect').value = 'horizontal';
+
+      activateWorkspaceUI();
+      renderAllViews();
+      startBatchOcrFromIndex(0);
+    });
+
+    /**
+     * =========================================================================
+     * 2. 全ページ一括高速OCRエンジン（日英バイリンガル対応＆縦横自動判定）
+     * =========================================================================
+     */
+    function updateOcrStatus(text, isBusy = false) {
+      $('ocrStatusText').textContent = text;
+      const badge = $('ocrStatusBadge');
+      if (isBusy) {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/30 border border-amber-400/60 text-amber-200 font-bold';
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600/30 border border-emerald-400/50 text-emerald-200 font-bold';
+      }
+    }
+
+    function createPreprocessedCanvas(srcCanvas) {
+      const out = document.createElement('canvas');
+      out.width = srcCanvas.width;
+      out.height = srcCanvas.height;
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(srcCanvas, 0, 0);
+      const imgData = ctx.getImageData(0, 0, out.width, out.height);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        const enhanced = gray < 145 ? Math.max(0, gray * 0.72) : Math.min(255, gray * 1.12);
+        d[i] = d[i + 1] = d[i + 2] = enhanced;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return out;
+    }
+
+    async function detectWritingDirectionAuto(pageObj) {
+      if (!pageObj) return 'horizontal';
+      try {
+        const preCanvas = createPreprocessedCanvas(pageObj.baseCanvas);
+        const workerH = await Tesseract.createWorker('jpn+eng');
+        const resH = await workerH.recognize(preCanvas);
+        await workerH.terminate();
+
+        const workerV = await Tesseract.createWorker('jpn_vert+eng');
+        const resV = await workerV.recognize(preCanvas);
+        await workerV.terminate();
+
+        const scoreWords = (words) => {
+          if (!words || words.length === 0) return 0;
+          let sum = 0;
+          words.forEach(w => {
+            const t = (w.text || '').trim();
+            if (t && w.confidence > 35) sum += w.confidence * Math.min(t.length, 4);
+          });
+          return sum;
+        };
+
+        const scoreH = scoreWords(resH.data.words);
+        const scoreV = scoreWords(resV.data.words);
+        return scoreV > scoreH * 1.12 ? 'vertical' : 'horizontal';
+      } catch (e) {
+        return 'horizontal';
+      }
+    }
+
+    async function terminateActiveOcrWorkers() {
+      const workers = [...appState.ocrWorkers];
+      appState.ocrWorkers = [];
+      for (const w of workers) {
+        try { await w.terminate(); } catch (_) {}
+      }
+    }
+
+    async function startBatchOcrFromIndex(startIndex = 0) {
+      appState.ocrQueueId++;
+      const currentQueue = appState.ocrQueueId;
+      await terminateActiveOcrWorkers();
+
+      const totalPages = appState.pages.length;
+      if (totalPages === 0) return;
+
+      for (let i = startIndex; i < totalPages; i++) {
+        appState.pages[i].ocrDone = false;
+        appState.pages[i].ocrWords = [];
+      }
+      renderAllViews();
+
+      const langPack = appState.direction === 'vertical' ? 'jpn_vert+eng' : 'jpn+eng';
+      updateOcrStatus(`全ページOCR準備中... (0/${totalPages})`, true);
+
+      try {
+        const worker = await Tesseract.createWorker(langPack);
+        appState.ocrWorkers.push(worker);
+
+        // 現在表示中のページとピン止めページを最優先で解析
+        const priorityIndices = [];
+        if (appState.currentPageIndex >= startIndex) priorityIndices.push(appState.currentPageIndex);
+        if (appState.pinnedPageIndex !== null && appState.pinnedPageIndex >= startIndex && !priorityIndices.includes(appState.pinnedPageIndex)) {
+          priorityIndices.push(appState.pinnedPageIndex);
+        }
+        for (let i = startIndex; i < totalPages; i++) {
+          if (!priorityIndices.includes(i)) priorityIndices.push(i);
+        }
+
+        let completedCount = startIndex;
+        for (const pageIdx of priorityIndices) {
+          if (currentQueue !== appState.ocrQueueId) break;
+          const pageObj = appState.pages[pageIdx];
+          if (!pageObj) continue;
+
+          updateOcrStatus(`OCR解析中... (${completedCount + 1}/${totalPages}ページ)`, true);
+          const preCanvas = createPreprocessedCanvas(pageObj.baseCanvas);
+          const result = await worker.recognize(preCanvas);
+          if (currentQueue !== appState.ocrQueueId) break;
+
+          const words = (result.data.words || [])
+            .map(w => ({
+              text: (w.text || '').trim(),
+              confidence: w.confidence || 0,
+              bbox: {
+                x0: w.bbox.x0,
+                y0: w.bbox.y0,
+                x1: w.bbox.x1,
+                y1: w.bbox.y1
+              }
+            }))
+            .filter(w => w.text.length > 0 && w.confidence > 25);
+
+          pageObj.ocrWords = words;
+          pageObj.ocrDone = true;
+          completedCount++;
+
+          if (pageIdx === appState.currentPageIndex || pageIdx === appState.pinnedPageIndex) {
+            renderAllViews();
+          }
+          renderSidebarThumbnails();
+        }
+
+        await terminateActiveOcrWorkers();
+        if (currentQueue === appState.ocrQueueId) {
+          updateOcrStatus(`全${totalPages}ページ解析完了・即読み上げOK`, false);
+        }
+      } catch (err) {
+        console.error(err);
+        if (currentQueue === appState.ocrQueueId) {
+          updateOcrStatus('OCR解析完了（一部制限あり）', false);
+        }
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 3. ページナビゲーション・サムネイル・ピン止め分割＆独立ズーム
+     * =========================================================================
+     */
+    function renderAllViews() {
+      updateSidebarVisibility();
+      renderSidebarThumbnails();
+      renderPane('primary', appState.currentPageIndex);
+      if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null && appState.pages[appState.pinnedPageIndex]) {
+        $('splitResizer').classList.remove('hidden');
+        $('splitResizer').classList.add('flex');
+        $('pinnedPane').classList.remove('hidden');
+        $('pinnedPane').classList.add('flex');
+        $('pinnedPane').style.flex = `0 0 ${appState.pinnedPanePercent}%`;
+        renderPane('pinned', appState.pinnedPageIndex);
+      } else {
+        $('splitResizer').classList.add('hidden');
+        $('splitResizer').classList.remove('flex');
+        $('pinnedPane').classList.add('hidden');
+        $('pinnedPane').classList.remove('flex');
+      }
+      updateHeaderControlsState();
+    }
+
+    // ピン止め画面の横幅ドラッグリサイズ＆ワンタップ比率変更
+    (function setupSplitResizer() {
+      const resizer = $('splitResizer');
+      const container = $('canvasSplitContainer');
+      if (!resizer || !container) return;
+
+      let isResizing = false;
+      resizer.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+        const rect = container.getBoundingClientRect();
+        const rightWidth = rect.right - e.clientX;
+        const pct = Math.min(80, Math.max(20, (rightWidth / rect.width) * 100));
+        appState.pinnedPanePercent = Math.round(pct * 10) / 10;
+        $('pinnedPane').style.flex = `0 0 ${appState.pinnedPanePercent}%`;
+      });
+
+      window.addEventListener('pointerup', () => {
+        if (!isResizing) return;
+        isResizing = false;
+        document.body.style.cursor = '';
+      });
+
+      document.querySelectorAll('.pin-ratio-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          appState.pinnedPanePercent = parseInt(btn.dataset.pinRatio, 10) || 46;
+          $('pinnedPane').style.flex = `0 0 ${appState.pinnedPanePercent}%`;
+        });
+      });
+    })();
+
+    function renderSidebarThumbnails() {
+      const list = $('thumbnailList');
+      if (!list) return;
+      list.innerHTML = '';
+      $('pageCountBadge').textContent = `${appState.pages.length}枚`;
+
+      appState.pages.forEach((page, idx) => {
+        const isCurrent = idx === appState.currentPageIndex;
+        const isPinned = idx === appState.pinnedPageIndex;
+
+        const card = document.createElement('div');
+        card.className = `cursor-pointer rounded-xl p-2 border-2 transition flex flex-col items-center gap-1.5 ${
+          isCurrent ? 'border-blue-600 bg-blue-50/60 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'
+        }`;
+
+        const thumbCanvas = document.createElement('canvas');
+        const tw = 110;
+        const th = Math.round(tw * (page.height / page.width));
+        thumbCanvas.width = tw;
+        thumbCanvas.height = th;
+        thumbCanvas.className = 'rounded shadow-sm bg-white pointer-events-none';
+        thumbCanvas.getContext('2d').drawImage(page.baseCanvas, 0, 0);
+
+        const footer = document.createElement('div');
+        footer.className = 'w-full flex items-center justify-between text-xs font-bold px-0.5';
+        footer.innerHTML = `
+          <span class="text-slate-700">
+            ${idx + 1}P ${page.ocrDone ? '✓' : '⏳'}
+          </span>
+          <button type="button" class="pin-thumb-btn text-xs px-1.5 py-0.5 rounded-md font-bold ${
+            isPinned ? 'bg-amber-400 text-amber-950' : 'bg-slate-100 hover:bg-amber-100 text-slate-600'
+          }" title="このページをピン止め表示">📌</button>
+        `;
+
+        card.appendChild(thumbCanvas);
+        card.appendChild(footer);
+
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.pin-thumb-btn')) {
+            e.stopPropagation();
+            togglePinForPage(idx);
+            return;
+          }
+          appState.currentPageIndex = idx;
+          appState.selection = null;
+          renderAllViews();
+        });
+
+        list.appendChild(card);
+      });
+    }
+
+    // ヘッダーコントロールの状態更新関数
+    function updateHeaderControlsState() {
+      const total = appState.pages.length;
+      if (total === 0) return;
+      $('primaryPageTitle').textContent = `${appState.currentPageIndex + 1} / ${total} ページ`;
+      $('zoomLabel', `${Math.round(appState.primaryZoom * 100)}%`);
+      if ($('zoomLabel')) $('zoomLabel').textContent = `${Math.round(appState.primaryZoom * 100)}%`;
+      if ($('pinnedZoomLabel')) $('pinnedZoomLabel').textContent = `${Math.round(appState.pinnedZoom * 100)}%`;
+
+      if (appState.pinnedPageIndex !== null && appState.pages[appState.pinnedPageIndex]) {
+        $('pinnedPageTitle').textContent = `📌 ピン止め：${appState.pinnedPageIndex + 1}ページ`;
+        const pinBtnLabel = $('btnPinLabel');
+        if (pinBtnLabel) pinBtnLabel.textContent = 'ピン止め中';
+      } else {
+        const pinBtnLabel = $('btnPinLabel');
+        if (pinBtnLabel) pinBtnLabel.textContent = 'ピン止め';
+      }
+    }
+
+    function togglePinForPage(pageIdx) {
+      if (appState.isSplitPinOpen && appState.pinnedPageIndex === pageIdx) {
+        appState.isSplitPinOpen = false;
+        appState.pinnedPageIndex = null;
+      } else {
+        appState.pinnedPageIndex = pageIdx;
+        appState.isSplitPinOpen = true;
+        showToast(`${pageIdx + 1}ページをピン止めしました（横に並べて操作できます）`);
+      }
+      renderAllViews();
+    }
+
+    $('btnPrevPage').addEventListener('click', () => {
+      if (appState.currentPageIndex > 0) {
+        appState.currentPageIndex--;
+        appState.selection = null;
+        renderAllViews();
+      }
+    });
+
+    $('btnNextPage').addEventListener('click', () => {
+      if (appState.currentPageIndex < appState.pages.length - 1) {
+        appState.currentPageIndex++;
+        appState.selection = null;
+        renderAllViews();
+      }
+    });
+
+    $('btnTogglePinPrimary').addEventListener('click', () => {
+      togglePinForPage(appState.currentPageIndex);
+    });
+
+    $('btnClosePinnedPane').addEventListener('click', () => {
+      appState.isSplitPinOpen = false;
+      appState.pinnedPageIndex = null;
+      renderAllViews();
+    });
+
+    // メイン画面独立ズーム
+    $('btnZoomIn').addEventListener('click', () => {
+      appState.primaryZoom = Math.min(2.2, +(appState.primaryZoom + 0.12).toFixed(2));
+      renderAllViews();
+    });
+    $('btnZoomOut').addEventListener('click', () => {
+      appState.primaryZoom = Math.max(0.35, +(appState.primaryZoom - 0.12).toFixed(2));
+      renderAllViews();
+    });
+
+    // ピン止め画面独立ズーム
+    $('btnPinnedZoomIn').addEventListener('click', () => {
+      appState.pinnedZoom = Math.min(2.2, +(appState.pinnedZoom + 0.12).toFixed(2));
+      renderAllViews();
+    });
+    $('btnPinnedZoomOut').addEventListener('click', () => {
+      appState.pinnedZoom = Math.max(0.35, +(appState.pinnedZoom - 0.12).toFixed(2));
+      renderAllViews();
+    });
+
+    /**
+     * =========================================================================
+     * 4. ステージ描画（下地・手書きインク・OCRハイライト・注釈・iPad風選択UI）
+     * =========================================================================
+     */
+    function renderPane(paneType, pageIdx) {
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+
+      const stage = $(`${paneType}Stage`);
+      const baseCanvas = $(`${paneType}BaseCanvas`);
+      const inkCanvas = $(`${paneType}InkCanvas`);
+      const overlayCanvas = $(`${paneType}OverlayCanvas`);
+      const tintLayer = $(`${paneType}TintLayer`);
+
+      const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+      const displayW = Math.round(pageObj.width * paneZoom);
+      const displayH = Math.round(pageObj.height * paneZoom);
+
+      stage.style.width = `${displayW}px`;
+      stage.style.height = `${displayH}px`;
+
+      baseCanvas.width = pageObj.width;
+      baseCanvas.height = pageObj.height;
+      baseCanvas.style.width = `${displayW}px`;
+      baseCanvas.style.height = `${displayH}px`;
+      baseCanvas.getContext('2d').drawImage(pageObj.baseCanvas, 0, 0);
+
+      if (inkCanvas) {
+        inkCanvas.width = pageObj.width;
+        inkCanvas.height = pageObj.height;
+        inkCanvas.style.width = `${displayW}px`;
+        inkCanvas.style.height = `${displayH}px`;
+        redrawInkStrokesForPane(paneType, pageIdx);
+      }
+
+      overlayCanvas.width = pageObj.width;
+      overlayCanvas.height = pageObj.height;
+      overlayCanvas.style.width = `${displayW}px`;
+      overlayCanvas.style.height = `${displayH}px`;
+
+      tintLayer.style.backgroundColor = appState.tintColor === 'none' ? 'transparent' : appState.tintColor;
+
+      drawOcrWordGuidesForPane(paneType, pageIdx);
+      renderAnnotationsForPane(paneType, pageIdx);
+      renderSelectionHandlesAndPopover(paneType);
+    }
+
+    function getOrderedWordsForPage(pageObj) {
+      if (!pageObj || !pageObj.ocrWords || pageObj.ocrWords.length === 0) return [];
+      const words = [...pageObj.ocrWords];
+      if (appState.direction === 'vertical') {
+        // 縦書き：右から左の列順、同じ列内は上から下
+        words.sort((a, b) => {
+          const cxA = (a.bbox.x0 + a.bbox.x1) / 2;
+          const cxB = (b.bbox.x0 + b.bbox.x1) / 2;
+          const colTolerance = Math.max(a.bbox.x1 - a.bbox.x0, b.bbox.x1 - b.bbox.x0) * 0.65;
+          if (Math.abs(cxA - cxB) > colTolerance) {
+            return cxB - cxA;
+          }
+          return a.bbox.y0 - b.bbox.y0;
+        });
+      } else {
+        // 横書き：上から下の行順、同じ行内は左から右
+        words.sort((a, b) => {
+          const cyA = (a.bbox.y0 + a.bbox.y1) / 2;
+          const cyB = (b.bbox.y0 + b.bbox.y1) / 2;
+          const rowTolerance = Math.max(a.bbox.y1 - a.bbox.y0, b.bbox.y1 - b.bbox.y0) * 0.65;
+          if (Math.abs(cyA - cyB) > rowTolerance) {
+            return cyA - cyB;
+          }
+          return a.bbox.x0 - b.bbox.x0;
+        });
+      }
+      return words;
+    }
+
+    // 段落・行ごとの最大文字サイズに揃えた統一感のある青色ハイライト＆黄色カラオケ追従描画
+    function drawOcrWordGuidesForPane(paneType, pageIdx) {
+      const overlayCanvas = $(`${paneType}OverlayCanvas`);
+      const pageObj = appState.pages[pageIdx];
+      if (!overlayCanvas || !pageObj) return;
+
+      const ctx = overlayCanvas.getContext('2d');
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      // 1. iPad風青色選択範囲（行・段落の最大サイズに合わせて統一された帯状ハイライト）
+      const sel = appState.selection;
+      if (sel && sel.pageIdx === pageIdx && sel.orderedWords && sel.orderedWords.length > 0) {
+        const sIdx = Math.min(sel.startIdx, sel.endIdx);
+        const eIdx = Math.max(sel.startIdx, sel.endIdx);
+        const selectedSlice = sel.orderedWords.slice(sIdx, eIdx + 1);
+
+        // 選択範囲全体の最大文字高さ（横書き）または幅（縦書き）を取得して統一
+        let maxLineThickness = 24;
+        selectedSlice.forEach(w => {
+          const thickness = appState.direction === 'vertical'
+            ? (w.bbox.x1 - w.bbox.x0)
+            : (w.bbox.y1 - w.bbox.y0);
+          if (thickness > maxLineThickness) maxLineThickness = thickness;
+        });
+
+        // 同じ行・列ごとにグループ化して1本の滑らかな帯として描画
+        const lineGroups = [];
+        selectedSlice.forEach(w => {
+          const lastGroup = lineGroups[lineGroups.length - 1];
+          if (!lastGroup) {
+            lineGroups.push([w]);
+            return;
+          }
+          const prev = lastGroup[lastGroup.length - 1];
+          if (appState.direction === 'vertical') {
+            const cxPrev = (prev.bbox.x0 + prev.bbox.x1) / 2;
+            const cxCurr = (w.bbox.x0 + w.bbox.x1) / 2;
+            if (Math.abs(cxPrev - cxCurr) < maxLineThickness * 0.75) {
+              lastGroup.push(w);
+            } else {
+              lineGroups.push([w]);
+            }
+          } else {
+            const cyPrev = (prev.bbox.y0 + prev.bbox.y1) / 2;
+            const cyCurr = (w.bbox.y0 + w.bbox.y1) / 2;
+            if (Math.abs(cyPrev - cyCurr) < maxLineThickness * 0.75) {
+              lastGroup.push(w);
+            } else {
+              lineGroups.push([w]);
+            }
+          }
+        });
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 122, 255, 0.28)';
+        lineGroups.forEach(group => {
+          if (appState.direction === 'vertical') {
+            let sumCx = 0;
+            let minY = Infinity;
+            let maxY = -Infinity;
+            group.forEach(w => {
+              sumCx += (w.bbox.x0 + w.bbox.x1) / 2;
+              minY = Math.min(minY, w.bbox.y0);
+              maxY = Math.max(maxY, w.bbox.y1);
+            });
+            const avgCx = sumCx / group.length;
+            const halfW = (maxLineThickness + 8) / 2;
+            ctx.beginPath();
+            ctx.roundRect(avgCx - halfW, minY - 3, halfW * 2, (maxY - minY) + 6, 6);
+            ctx.fill();
+          } else {
+            let sumCy = 0;
+            let minX = Infinity;
+            let maxX = -Infinity;
+            group.forEach(w => {
+              sumCy += (w.bbox.y0 + w.bbox.y1) / 2;
+              minX = Math.min(minX, w.bbox.x0);
+              maxX = Math.max(maxX, w.bbox.x1);
+            });
+            const avgCy = sumCy / group.length;
+            const halfH = (maxLineThickness + 8) / 2;
+            ctx.beginPath();
+            ctx.roundRect(minX - 3, avgCy - halfH, (maxX - minX) + 6, halfH * 2, 6);
+            ctx.fill();
+          }
+        });
+        ctx.restore();
+      }
+
+      // 2. 現在読み上げ中の黄色カラオケハイライト
+      const active = appState.activeSpokenWord;
+      if (active && active.pageIdx === pageIdx && active.bbox) {
+        const b = active.bbox;
+        ctx.save();
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.58)';
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(b.x0 - 4, b.y0 - 4, (b.x1 - b.x0) + 8, (b.y1 - b.y0) + 8, 6);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 5. iPad風選択ハンドル＆フローティングメニュー（「。まで」「段落」含む）
+     * =========================================================================
+     */
+    function renderSelectionHandlesAndPopover(paneType) {
+      const uiLayer = $(`${paneType}SelectionUILayer`);
+      if (!uiLayer) return;
+      uiLayer.innerHTML = '';
+
+      const sel = appState.selection;
+      const pageIdx = paneType === 'pinned' ? appState.pinnedPageIndex : appState.currentPageIndex;
+      if (!sel || sel.pageIdx !== pageIdx || !sel.orderedWords || sel.orderedWords.length === 0) return;
+
+      const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+      const sIdx = Math.min(sel.startIdx, sel.endIdx);
+      const eIdx = Math.max(sel.startIdx, sel.endIdx);
+      const firstWord = sel.orderedWords[sIdx];
+      const lastWord = sel.orderedWords[eIdx];
+      if (!firstWord || !lastWord) return;
+
+      // 開始・終了ドラッグハンドル（青い丸＋縦棒）
+      const createHandle = (word, isStart) => {
+        const handle = document.createElement('div');
+        handle.className = 'pointer-events-auto cursor-grab active:cursor-grabbing flex flex-col items-center';
+        handle.style.position = 'absolute';
+        const x = (isStart ? word.bbox.x0 : word.bbox.x1) * paneZoom;
+        const yTop = word.bbox.y0 * paneZoom;
+        const h = Math.max(18, (word.bbox.y1 - word.bbox.y0) * paneZoom);
+
+        handle.style.left = `${x - 10}px`;
+        handle.style.top = `${isStart ? yTop - 14 : yTop}px`;
+        handle.style.width = '20px';
+        handle.style.height = `${h + 14}px`;
+
+        if (isStart) {
+          handle.innerHTML = `
+            <div class="w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow-md"></div>
+            <div class="w-0.5 flex-1 bg-blue-600"></div>
+          `;
+        } else {
+          handle.innerHTML = `
+            <div class="w-0.5 flex-1 bg-blue-600"></div>
+            <div class="w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow-md"></div>
+          `;
+        }
+
+        handle.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const stage = $(`${paneType}Stage`);
+          const onDragHandle = (ev) => {
+            const rect = stage.getBoundingClientRect();
+            const cx = (ev.clientX - rect.left) / paneZoom;
+            const cy = (ev.clientY - rect.top) / paneZoom;
+            const nearest = findNearestWordIndex(sel.orderedWords, cx, cy);
+            if (nearest !== -1) {
+              if (isStart) {
+                sel.startIdx = Math.min(nearest, sel.endIdx);
+              } else {
+                sel.endIdx = Math.max(nearest, sel.startIdx);
+              }
+              updateSelectionTextAndRedraw();
+            }
+          };
+          const onEndDrag = () => {
+            window.removeEventListener('pointermove', onDragHandle);
+            window.removeEventListener('pointerup', onEndDrag);
+            if ($('chkAutoSpeakOnSelect').checked) {
+              speakCurrentSelection();
+            }
+          };
+          window.addEventListener('pointermove', onDragHandle);
+          window.addEventListener('pointerup', onEndDrag);
+        });
+
+        return handle;
+      };
+
+      uiLayer.appendChild(createHandle(firstWord, true));
+      uiLayer.appendChild(createHandle(lastWord, false));
+
+      // iPad風フローティング操作バー
+      const popover = document.createElement('div');
+      popover.className = 'ipad-popover pointer-events-auto absolute bg-slate-900/95 text-white rounded-2xl shadow-2xl border border-slate-700 px-2 py-1.5 flex items-center gap-1 text-xs font-bold whitespace-nowrap z-40';
+
+      const midX = ((firstWord.bbox.x0 + lastWord.bbox.x1) / 2) * paneZoom;
+      const topY = Math.min(firstWord.bbox.y0, lastWord.bbox.y1) * paneZoom;
+      const popTop = topY > 56 ? topY - 48 : (Math.max(firstWord.bbox.y1, lastWord.bbox.y1) * paneZoom) + 12;
+      popover.style.left = `${Math.max(8, midX - 150)}px`;
+      popover.style.top = `${popTop}px`;
+
+      popover.innerHTML = `
+        <button type="button" data-act="speak" class="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white">▶ 読む</button>
+        <button type="button" data-act="slow" class="px-2 py-1 rounded-lg hover:bg-slate-700">🐢 ゆっくり</button>
+        <button type="button" data-act="sentence" class="px-2 py-1 rounded-lg hover:bg-slate-700 text-amber-300" title="句点「。」やピリオドまで拡張">。まで</button>
+        <button type="button" data-act="paragraph" class="px-2 py-1 rounded-lg hover:bg-slate-700 text-emerald-300" title="段落全体を選択">段落</button>
+        <button type="button" data-act="copy" class="px-2 py-1 rounded-lg hover:bg-slate-700">コピー</button>
+        <button type="button" data-act="clear" class="px-1.5 py-1 rounded-lg hover:bg-slate-700 text-slate-400">✕</button>
+      `;
+
+      popover.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const act = btn.dataset.act;
+        if (act === 'speak') {
+          speakCurrentSelection();
+        } else if (act === 'slow') {
+          speakCurrentSelection(0.7);
+        } else if (act === 'sentence') {
+          expandSelectionToSentenceEnd();
+        } else if (act === 'paragraph') {
+          expandSelectionToParagraph();
+        } else if (act === 'copy') {
+          const txt = getSelectedWordsText();
+          const ta = document.createElement('textarea');
+          ta.value = txt;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showToast('選択テキストをコピーしました');
+        } else if (act === 'clear') {
+          appState.selection = null;
+          renderAllViews();
+        }
+      });
+
+      uiLayer.appendChild(popover);
+    }
+
+    function findNearestWordIndex(words, x, y) {
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      words.forEach((w, idx) => {
+        const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+        const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+        const inside = x >= w.bbox.x0 - 8 && x <= w.bbox.x1 + 8 && y >= w.bbox.y0 - 8 && y <= w.bbox.y1 + 8;
+        const dist = inside ? 0 : Math.hypot(cx - x, cy - y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      });
+      return bestDist < 180 ? bestIdx : -1;
+    }
+
+    // 「。まで」拡張選択
+    function expandSelectionToSentenceEnd() {
+      const sel = appState.selection;
+      if (!sel || !sel.orderedWords) return;
+      const words = sel.orderedWords;
+      let start = Math.min(sel.startIdx, sel.endIdx);
+      let end = Math.max(sel.startIdx, sel.endIdx);
+
+      // 文頭へ戻る
+      while (start > 0 && !/[。．！？!?\.]$/.test(words[start - 1].text)) {
+        start--;
+      }
+      // 句点・ピリオド・！・？まで進む
+      while (end < words.length - 1 && !/[。．！？!?\.]$/.test(words[end].text)) {
+        end++;
+      }
+
+      sel.startIdx = start;
+      sel.endIdx = end;
+      updateSelectionTextAndRedraw();
+      speakCurrentSelection();
+    }
+
+    // 「段落」拡張選択
+    function expandSelectionToParagraph() {
+      const sel = appState.selection;
+      if (!sel || !sel.orderedWords) return;
+      const words = sel.orderedWords;
+      let start = Math.min(sel.startIdx, sel.endIdx);
+      let end = Math.max(sel.startIdx, sel.endIdx);
+
+      const isLargeGap = (wPrev, wNext) => {
+        if (appState.direction === 'vertical') {
+          const colW = Math.max(wPrev.bbox.x1 - wPrev.bbox.x0, wNext.bbox.x1 - wNext.bbox.x0);
+          return Math.abs(wPrev.bbox.x0 - wNext.bbox.x0) > colW * 1.9;
+        } else {
+          const rowH = Math.max(wPrev.bbox.y1 - wPrev.bbox.y0, wNext.bbox.y1 - wNext.bbox.y0);
+          return Math.abs(wNext.bbox.y0 - wPrev.bbox.y1) > rowH * 1.45;
+        }
+      };
+
+      while (start > 0 && !isLargeGap(words[start - 1], words[start])) {
+        start--;
+      }
+      while (end < words.length - 1 && !isLargeGap(words[end], words[end + 1])) {
+        end++;
+      }
+
+      sel.startIdx = start;
+      sel.endIdx = end;
+      updateSelectionTextAndRedraw();
+      speakCurrentSelection();
+    }
+
+    function getSelectedWordsText() {
+      const sel = appState.selection;
+      if (!sel || !sel.orderedWords) return '';
+      const s = Math.min(sel.startIdx, sel.endIdx);
+      const e = Math.max(sel.startIdx, sel.endIdx);
+      const slice = sel.orderedWords.slice(s, e + 1);
+      let out = '';
+      slice.forEach((w, idx) => {
+        if (idx > 0 && /^[A-Za-z0-9]/.test(w.text) && /[A-Za-z0-9]$/.test(slice[idx - 1].text)) {
+          out += ' ';
+        }
+        out += w.text;
+      });
+      return out;
+    }
+
+    function updateSelectionTextAndRedraw() {
+      const txt = getSelectedWordsText();
+      $('spokenTextInput').value = txt;
+      drawOcrWordGuidesForPane('primary', appState.currentPageIndex);
+      renderSelectionHandlesAndPopover('primary');
+      if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
+        drawOcrWordGuidesForPane('pinned', appState.pinnedPageIndex);
+        renderSelectionHandlesAndPopover('pinned');
+      }
+    }
+
+    /**
+     * =========================================================================
+     * 6. ステージ上のポインター操作（ドラッグ範囲選択・Apple Pencil手書き・注釈配置）
+     * =========================================================================
+     */
+    function attachStageInteractions(paneType) {
+      const stage = $(`${paneType}Stage`);
+      if (!stage) return;
+
+      let isDragging = false;
+      let dragStartWordIdx = -1;
+
+      const getPageIndexForPane = () => paneType === 'pinned' ? appState.pinnedPageIndex : appState.currentPageIndex;
+
+      const getCanvasCoords = (e) => {
+        const rect = stage.getBoundingClientRect();
+        const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+        return {
+          x: (e.clientX - rect.left) / paneZoom,
+          y: (e.clientY - rect.top) / paneZoom
+        };
+      };
+
+      const onDown = (e) => {
+        if (e.target.closest('.annotation-item') || e.target.closest('.ipad-popover')) return;
+        const pageIdx = getPageIndexForPane();
+        if (pageIdx === null || !appState.pages[pageIdx]) return;
+
+        // ペン手書きモード（Apple Pencil・指・マウス対応）
+        if (appState.toolMode === 'pen') {
+          if (e.button !== undefined && e.button !== 0) return;
+          e.preventDefault();
+          const pageObj = appState.pages[pageIdx];
+          if (!pageObj.inkStrokes) pageObj.inkStrokes = [];
+          const pos = getCanvasCoords(e);
+          const pressure = (e.pressure && e.pressure > 0) ? e.pressure : 0.5;
+          const stroke = {
+            kind: appState.penOptions.kind,
+            color: appState.penOptions.color,
+            width: appState.penOptions.width,
+            points: [{ x: pos.x, y: pos.y, p: pressure }]
+          };
+          pageObj.inkStrokes.push(stroke);
+          stage._activeStroke = stroke;
+          stage._activeStrokePageIdx = pageIdx;
+          redrawInkStrokesForPane(paneType, pageIdx);
+          return;
+        }
+
+        if (appState.toolMode === 'text') {
+          const pos = getCanvasCoords(e);
+          const val = $('annoTextInput').value.trim() || 'ここにメモ';
+          addTextAnnotation(pageIdx, pos.x, pos.y, val);
+          return;
+        }
+
+        if (appState.toolMode === 'math') {
+          const pos = getCanvasCoords(e);
+          placeCurrentMathOnPage(pageIdx, pos.x, pos.y);
+          return;
+        }
+
+        // 「囲んでよむ」モード：iPad風テキスト範囲選択
+        const pageObj = appState.pages[pageIdx];
+        if (!pageObj.ocrDone || !pageObj.ocrWords || pageObj.ocrWords.length === 0) {
+          showToast('このページは文字認識中か、文字が見つかりません');
+          return;
+        }
+
+        const pos = getCanvasCoords(e);
+        const orderedWords = getOrderedWordsForPage(pageObj);
+        const hitIdx = findNearestWordIndex(orderedWords, pos.x, pos.y);
+        if (hitIdx === -1) {
+          appState.selection = null;
+          renderAllViews();
+          return;
+        }
+
+        isDragging = true;
+        dragStartWordIdx = hitIdx;
+        appState.selection = {
+          paneType,
+          pageIdx,
+          startIdx: hitIdx,
+          endIdx: hitIdx,
+          orderedWords
+        };
+        updateSelectionTextAndRedraw();
+      };
+
+      const onMove = (e) => {
+        if (stage._activeStroke) {
+          e.preventDefault();
+          const pos = getCanvasCoords(e);
+          const pressure = (e.pressure && e.pressure > 0) ? e.pressure : 0.5;
+          stage._activeStroke.points.push({ x: pos.x, y: pos.y, p: pressure });
+          redrawInkStrokesForPane(paneType, stage._activeStrokePageIdx);
+          return;
+        }
+
+        if (!isDragging || !appState.selection) return;
+        e.preventDefault();
+        const pos = getCanvasCoords(e);
+        const hitIdx = findNearestWordIndex(appState.selection.orderedWords, pos.x, pos.y);
+        if (hitIdx !== -1) {
+          appState.selection.startIdx = Math.min(dragStartWordIdx, hitIdx);
+          appState.selection.endIdx = Math.max(dragStartWordIdx, hitIdx);
+          updateSelectionTextAndRedraw();
+        }
+      };
+
+      const onUp = () => {
+        if (stage._activeStroke) {
+          stage._activeStroke = null;
+          if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
+            redrawInkStrokesForPane('primary', appState.currentPageIndex);
+            redrawInkStrokesForPane('pinned', appState.pinnedPageIndex);
+          }
+          return;
+        }
+
+        if (!isDragging) return;
+        isDragging = false;
+        if (appState.selection && $('chkAutoSpeakOnSelect').checked) {
+          speakCurrentSelection();
+        }
+      };
+
+      stage.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+
+      // ダブルクリックで1文選択、トリプルクリックで段落選択
+      stage.addEventListener('click', (e) => {
+        if (appState.toolMode !== 'read' || !appState.selection) return;
+        if (e.detail === 2) {
+          expandSelectionToSentenceEnd();
+        } else if (e.detail >= 3) {
+          expandSelectionToParagraph();
+        }
+      });
+    }
+
+    attachStageInteractions('primary');
+    attachStageInteractions('pinned');
+
+    /**
+     * =========================================================================
+     * 7. ツールモード切替（囲んでよむ / ペン手書き / 文字 / 数式）
+     * =========================================================================
+     */
+    function setToolMode(mode) {
+      appState.toolMode = mode;
+      document.querySelectorAll('.tool-btn').forEach(btn => {
+        if (btn.dataset.tool === mode) {
+          btn.className = 'tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 bg-blue-600 text-white shadow-sm transition';
+        } else {
+          btn.className = 'tool-btn px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1 text-slate-700 hover:bg-white transition';
+        }
+      });
+
+      const touchStyle = mode === 'pen' ? 'none' : 'auto';
+      if ($('primaryStage')) $('primaryStage').style.touchAction = touchStyle;
+      if ($('pinnedStage')) $('pinnedStage').style.touchAction = touchStyle;
+
+      if (mode === 'read') {
+        $('editorSidePanel').classList.add('hidden');
+        $('editorSidePanel').classList.remove('flex');
+      } else {
+        $('editorSidePanel').classList.remove('hidden');
+        $('editorSidePanel').classList.add('flex');
+        $('penToolPanel').classList.toggle('hidden', mode !== 'pen');
+        $('textToolPanel').classList.toggle('hidden', mode !== 'text');
+        $('mathToolPanel').classList.toggle('hidden', mode !== 'math');
+      }
+    }
+
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => setToolMode(btn.dataset.tool));
+    });
+    document.querySelectorAll('.close-side-panel').forEach(btn => {
+      btn.addEventListener('click', () => setToolMode('read'));
+    });
+
+    /**
+     * =========================================================================
+     * 8. Apple Pencil・手書きペン描画 ＆ ノート・計算用紙テンプレート生成
+     * =========================================================================
+     */
+    function redrawInkStrokesForPane(paneType, pageIdx) {
+      const inkCanvas = $(`${paneType}InkCanvas`);
+      const pageObj = appState.pages[pageIdx];
+      if (!inkCanvas || !pageObj) return;
+      const ctx = inkCanvas.getContext('2d');
+      ctx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+
+      const strokes = pageObj.inkStrokes || [];
+      strokes.forEach(stroke => {
+        if (!stroke.points || stroke.points.length === 0) return;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (stroke.kind === 'eraser') {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.strokeStyle = 'rgba(0,0,0,1)';
+          ctx.lineWidth = stroke.width * 3.2;
+        } else if (stroke.kind === 'marker') {
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.globalAlpha = 0.36;
+          ctx.strokeStyle = stroke.color;
+          ctx.lineWidth = stroke.width * 3.4;
+        } else {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1.0;
+          ctx.strokeStyle = stroke.color;
+          const avgP = stroke.points[0].p || 0.5;
+          ctx.lineWidth = Math.max(1.5, stroke.width * (0.65 + avgP * 0.7));
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        if (stroke.points.length === 1) {
+          ctx.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y + 0.1);
+        } else {
+          for (let i = 1; i < stroke.points.length; i++) {
+            const prev = stroke.points[i - 1];
+            const curr = stroke.points[i];
+            const midX = (prev.x + curr.x) / 2;
+            const midY = (prev.y + curr.y) / 2;
+            ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+          }
+          const last = stroke.points[stroke.points.length - 1];
+          ctx.lineTo(last.x, last.y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    document.querySelectorAll('.pen-kind-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.penOptions.kind = btn.dataset.penKind;
+        document.querySelectorAll('.pen-kind-btn').forEach(b => {
+          b.className = 'pen-kind-btn py-2 px-2 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs flex flex-col items-center gap-0.5';
+        });
+        btn.className = 'pen-kind-btn py-2 px-2 rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold text-xs flex flex-col items-center gap-0.5';
+      });
+    });
+
+    document.querySelectorAll('.pcolor-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.penOptions.color = btn.dataset.pcolor;
+        if (appState.penOptions.kind === 'eraser') {
+          appState.penOptions.kind = 'pen';
+        }
+        document.querySelectorAll('.pcolor-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-500'));
+        btn.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
+      });
+    });
+
+    $('penWidthSlider').addEventListener('input', (e) => {
+      appState.penOptions.width = parseInt(e.target.value, 10);
+      $('penWidthLabel').textContent = `${appState.penOptions.width}px`;
+    });
+
+    $('btnUndoInk').addEventListener('click', () => {
+      const pageObj = appState.pages[appState.currentPageIndex];
+      if (pageObj && pageObj.inkStrokes && pageObj.inkStrokes.length > 0) {
+        pageObj.inkStrokes.pop();
+        renderAllViews();
+      }
+    });
+
+    $('btnClearCurrentInk').addEventListener('click', () => {
+      const pageObj = appState.pages[appState.currentPageIndex];
+      if (!pageObj) return;
+      pageObj.inkStrokes = [];
+      renderAllViews();
+      showToast('このページの手書きメモ・計算をクリアしました 🧹');
+    });
+
+    $('btnClearPinnedInk').addEventListener('click', () => {
+      if (appState.pinnedPageIndex === null || !appState.pages[appState.pinnedPageIndex]) {
+        showToast('ピン止めされているページがありません');
+        return;
+      }
+      appState.pages[appState.pinnedPageIndex].inkStrokes = [];
+      renderAllViews();
+      showToast('ピン止め側の計算用紙をクリアしました 🧹');
+    });
+
+    // ノート・計算用紙テンプレート生成
+    function createNoteTemplateCanvas(templateType) {
+      const w = 1000;
+      const h = 1350;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      if (templateType === 'calc_grid') {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, w, 90);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 90);
+        ctx.lineTo(w, 90);
+        ctx.stroke();
+
+        ctx.fillStyle = '#334155';
+        ctx.font = 'bold 24px "BIZ UDPGothic", sans-serif';
+        ctx.fillText('🧮 算数・数学 計算用紙（ひっ算・メモ）', 36, 54);
+        ctx.font = '18px "BIZ UDPGothic", sans-serif';
+        ctx.fillStyle = '#64748b';
+        ctx.fillText('日付：　　月　　日', 740, 54);
+
+        const step = 36;
+        for (let x = 36; x < w - 20; x += step) {
+          ctx.strokeStyle = ((x - 36) / step) % 5 === 0 ? '#93c5fd' : '#dbeafe';
+          ctx.lineWidth = ((x - 36) / step) % 5 === 0 ? 1.5 : 1;
+          ctx.beginPath();
+          ctx.moveTo(x, 90);
+          ctx.lineTo(x, h - 20);
+          ctx.stroke();
+        }
+        for (let y = 90; y < h - 20; y += step) {
+          ctx.strokeStyle = ((y - 90) / step) % 5 === 0 ? '#93c5fd' : '#dbeafe';
+          ctx.lineWidth = ((y - 90) / step) % 5 === 0 ? 1.5 : 1;
+          ctx.beginPath();
+          ctx.moveTo(20, y);
+          ctx.lineTo(w - 20, y);
+          ctx.stroke();
+        }
+      } else if (templateType === 'cornell') {
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(30, 110);
+        ctx.lineTo(w - 30, 110);
+        ctx.moveTo(30, h - 220);
+        ctx.lineTo(w - 30, h - 220);
+        ctx.moveTo(290, 110);
+        ctx.lineTo(290, h - 220);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1.2;
+        for (let y = 155; y < h - 220; y += 44) {
+          ctx.beginPath();
+          ctx.moveTo(30, y);
+          ctx.lineTo(w - 30, y);
+          ctx.stroke();
+        }
+        for (let y = h - 175; y < h - 30; y += 44) {
+          ctx.beginPath();
+          ctx.moveTo(30, y);
+          ctx.lineTo(w - 30, y);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#334155';
+        ctx.font = 'bold 22px "BIZ UDPGothic", sans-serif';
+        ctx.fillText('テーマ・単元名：', 44, 72);
+        ctx.font = 'bold 16px "BIZ UDPGothic", sans-serif';
+        ctx.fillStyle = '#2563eb';
+        ctx.fillText('【キーワード・疑問】', 44, 138);
+        ctx.fillText('【授業・学習ノート】', 310, 138);
+        ctx.fillText('【自分の言葉でまとめ】', 44, h - 192);
+      } else if (templateType === 'lined') {
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(40, 100);
+        ctx.lineTo(w - 40, 100);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#dbeafe';
+        ctx.lineWidth = 1.5;
+        for (let y = 150; y < h - 40; y += 48) {
+          ctx.beginPath();
+          ctx.moveTo(40, y);
+          ctx.lineTo(w - 40, y);
+          ctx.stroke();
+        }
+      } else if (templateType === 'vertical_genkou') {
+        ctx.strokeStyle = '#bbf7d0';
+        ctx.lineWidth = 1.5;
+        for (let x = w - 70; x > 60; x -= 54) {
+          ctx.beginPath();
+          ctx.moveTo(x, 60);
+          ctx.lineTo(x, h - 60);
+          ctx.stroke();
+        }
+      } else {
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(20, 20, w - 40, h - 40);
+      }
+
+      return canvas;
+    }
+
+    function addNoteTemplatePage(templateType, autoPin = true) {
+      const canvas = createNoteTemplateCanvas(templateType);
+      const newPage = {
+        id: generateId(),
+        baseCanvas: canvas,
+        inkStrokes: [],
+        width: canvas.width,
+        height: canvas.height,
+        ocrWords: [],
+        ocrDone: true,
+        pinned: autoPin,
+        annotations: []
+      };
+
+      const wasEmpty = appState.pages.length === 0;
+      appState.pages.push(newPage);
+      const newIdx = appState.pages.length - 1;
+
+      if (wasEmpty) {
+        appState.currentPageIndex = 0;
+        appState.primaryZoom = 0.65;
+        appState.pinnedZoom = 0.65;
+      }
+
+      if (autoPin) {
+        appState.pinnedPageIndex = newIdx;
+        appState.isSplitPinOpen = true;
+      } else {
+        appState.currentPageIndex = newIdx;
+      }
+
+      activateWorkspaceUI();
+      setToolMode('pen');
+      renderAllViews();
+
+      const names = {
+        calc_grid: '算数・数学 計算用紙',
+        cornell: 'コーネル式ノート',
+        blank: '白紙ノート',
+        lined: 'よこ罫線ノート',
+        vertical_genkou: 'たて書きノート'
+      };
+      showToast(`${names[templateType] || 'ノート'}を追加しました！ペンで直接書き込めます`);
+    }
+
+    $('btnOpenNoteTemplateModal').addEventListener('click', () => {
+      $('noteTemplateModal').classList.remove('hidden');
+    });
+    $('btnCloseNoteTemplate').addEventListener('click', () => {
+      $('noteTemplateModal').classList.add('hidden');
+    });
+    document.querySelectorAll('.note-tpl-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tpl = btn.dataset.noteTpl;
+        const autoPin = $('chkPinCreatedNote').checked;
+        $('noteTemplateModal').classList.add('hidden');
+        addNoteTemplatePage(tpl, autoPin);
+      });
+    });
+
+    $('btnCalcSheetWelcome').addEventListener('click', () => {
+      addNoteTemplatePage('calc_grid', false);
+    });
+
+    $('btnQuickPinnedCalc').addEventListener('click', () => {
+      addNoteTemplatePage('calc_grid', true);
+    });
+
+    /**
+     * =========================================================================
+     * 9. テキスト書き込み（注釈）＆ かんたん数式ビルダー機能
+     * =========================================================================
+     */
+    document.querySelectorAll('.tcolor-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.textOptions.color = btn.dataset.tcolor;
+        document.querySelectorAll('.tcolor-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-500'));
+        btn.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
+      });
+    });
+
+    document.querySelectorAll('.tbg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.textOptions.bg = btn.dataset.tbg;
+        document.querySelectorAll('.tbg-btn').forEach(b => b.classList.remove('border-2', 'border-blue-500'));
+        btn.classList.add('border-2', 'border-blue-500');
+      });
+    });
+
+    function addTextAnnotation(pageIdx, x, y, text) {
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+      pageObj.annotations.push({
+        id: generateId(),
+        type: 'text',
+        x,
+        y,
+        text,
+        fontSize: parseInt($('annoFontSize').value, 10) || 28,
+        dir: $('annoWritingDir').value,
+        color: appState.textOptions.color,
+        bg: appState.textOptions.bg
+      });
+      renderAllViews();
+      showToast('文字を追加しました（ドラッグで位置を動かせます）');
+    }
+
+    $('btnInsertTextCenter').addEventListener('click', () => {
+      const pageIdx = appState.currentPageIndex;
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+      const txt = $('annoTextInput').value.trim() || 'ここにメモ';
+      addTextAnnotation(pageIdx, pageObj.width * 0.35, pageObj.height * 0.35, txt);
+    });
+
+    // かんたん数式トークン操作
+    function updateMathPreviewUI() {
+      const preview = $('mathVisualPreview');
+      const readingEl = $('mathReadingPreview');
+      if (appState.mathTokens.length === 0) {
+        preview.innerHTML = '<span class="text-xs text-slate-400 font-normal">下のボタンで数字や記号をえらんでね</span>';
+        readingEl.textContent = 'よみかた：';
+        return;
+      }
+      preview.innerHTML = '';
+      appState.mathTokens.forEach((tok, idx) => {
+        const span = document.createElement('span');
+        span.className = 'cursor-pointer hover:bg-indigo-100 px-1 rounded';
+        if (tok.kind === 'char') {
+          span.textContent = tok.val;
+        } else if (tok.kind === 'frac') {
+          span.innerHTML = `<span class="math-frac text-base"><span class="math-frac-num">${tok.num}</span><span class="math-frac-den">${tok.den}</span></span>`;
+          span.addEventListener('click', () => openMathSpecialEditor(idx));
+        } else if (tok.kind === 'mixed') {
+          span.innerHTML = `<span class="inline-flex items-center"><span>${tok.whole}</span><span class="math-frac text-base"><span class="math-frac-num">${tok.num}</span><span class="math-frac-den">${tok.den}</span></span></span>`;
+          span.addEventListener('click', () => openMathSpecialEditor(idx));
+        } else if (tok.kind === 'power') {
+          span.innerHTML = `<span>${tok.base}<sup class="text-sm">${tok.exp}</sup></span>`;
+          span.addEventListener('click', () => openMathSpecialEditor(idx));
+        } else if (tok.kind === 'sqrt') {
+          span.innerHTML = `<span>√<span class="border-t-2 border-slate-900 px-0.5">${tok.val}</span></span>`;
+          span.addEventListener('click', () => openMathSpecialEditor(idx));
+        }
+        preview.appendChild(span);
+      });
+
+      const spoken = mathTokensToSpeechText(appState.mathTokens);
+      readingEl.textContent = `よみかた：${spoken}`;
+    }
+
+    function mathTokensToSpeechText(tokens) {
+      return tokens.map(t => {
+        if (t.kind === 'char') {
+          const map = { '＋': ' たす ', '－': ' ひく ', '×': ' かける ', '÷': ' わる ', '＝': ' は ', '＜': ' しょうなり ', '＞': ' だいなり ' };
+          return map[t.val] || t.val;
+        }
+        if (t.kind === 'frac') return `${t.den}分の${t.num}`;
+        if (t.kind === 'mixed') return `${t.whole}と${t.den}分の${t.num}`;
+        if (t.kind === 'power') return `${t.base}の${t.exp}乗`;
+        if (t.kind === 'sqrt') return `ルート${t.val}`;
+        return '';
+      }).join('');
+    }
+
+    function openMathSpecialEditor(idx) {
+      appState.editingMathTokenIndex = idx;
+      const tok = appState.mathTokens[idx];
+      if (!tok) return;
+      const box = $('mathSpecialEditor');
+      const inputs = $('mathSpecialInputs');
+      box.classList.remove('hidden');
+      inputs.innerHTML = '';
+
+      if (tok.kind === 'frac') {
+        $('mathSpecialTitle').textContent = '分数の数字を入力';
+        inputs.innerHTML = `
+          <div class="flex flex-col items-center gap-1">
+            <input id="spNum" type="text" value="${tok.num}" placeholder="分子(上)" class="w-20 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+            <div class="w-20 h-0.5 bg-slate-800"></div>
+            <input id="spDen" type="text" value="${tok.den}" placeholder="分母(下)" class="w-20 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+          </div>
+        `;
+        $('spNum').addEventListener('input', (e) => { tok.num = e.target.value || '1'; updateMathPreviewUI(); });
+        $('spDen').addEventListener('input', (e) => { tok.den = e.target.value || '2'; updateMathPreviewUI(); });
+      } else if (tok.kind === 'mixed') {
+        $('mathSpecialTitle').textContent = '帯分数の数字を入力';
+        inputs.innerHTML = `
+          <input id="spWhole" type="text" value="${tok.whole}" placeholder="整数" class="w-14 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+          <div class="flex flex-col items-center gap-1">
+            <input id="spNum" type="text" value="${tok.num}" placeholder="分子" class="w-16 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+            <div class="w-16 h-0.5 bg-slate-800"></div>
+            <input id="spDen" type="text" value="${tok.den}" placeholder="分母" class="w-16 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+          </div>
+        `;
+        $('spWhole').addEventListener('input', (e) => { tok.whole = e.target.value || '1'; updateMathPreviewUI(); });
+        $('spNum').addEventListener('input', (e) => { tok.num = e.target.value || '1'; updateMathPreviewUI(); });
+        $('spDen').addEventListener('input', (e) => { tok.den = e.target.value || '2'; updateMathPreviewUI(); });
+      } else if (tok.kind === 'power') {
+        $('mathSpecialTitle').textContent = 'るい乗（〇乗）を入力';
+        inputs.innerHTML = `
+          <input id="spBase" type="text" value="${tok.base}" placeholder="もと" class="w-16 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+          <span class="font-bold">の</span>
+          <input id="spExp" type="text" value="${tok.exp}" placeholder="何乗" class="w-14 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+          <span class="font-bold">乗</span>
+        `;
+        $('spBase').addEventListener('input', (e) => { tok.base = e.target.value || 'x'; updateMathPreviewUI(); });
+        $('spExp').addEventListener('input', (e) => { tok.exp = e.target.value || '2'; updateMathPreviewUI(); });
+      } else if (tok.kind === 'sqrt') {
+        $('mathSpecialTitle').textContent = 'ルートの中身を入力';
+        inputs.innerHTML = `
+          <span class="font-extrabold text-lg">√</span>
+          <input id="spSqrt" type="text" value="${tok.val}" placeholder="数字" class="w-24 text-center border-2 border-indigo-400 rounded-lg py-1 font-bold">
+        `;
+        $('spSqrt').addEventListener('input', (e) => { tok.val = e.target.value || '2'; updateMathPreviewUI(); });
+      }
+    }
+
+    $('btnCloseSpecialEditor').addEventListener('click', () => {
+      $('mathSpecialEditor').classList.add('hidden');
+    });
+
+    document.querySelectorAll('.math-key').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.mathTokens.push({ kind: 'char', val: btn.dataset.mtoken });
+        updateMathPreviewUI();
+      });
+    });
+
+    $('btnAddFraction').addEventListener('click', () => {
+      appState.mathTokens.push({ kind: 'frac', num: '1', den: '2' });
+      updateMathPreviewUI();
+      openMathSpecialEditor(appState.mathTokens.length - 1);
+    });
+
+    $('btnAddMixedFraction').addEventListener('click', () => {
+      appState.mathTokens.push({ kind: 'mixed', whole: '1', num: '1', den: '2' });
+      updateMathPreviewUI();
+      openMathSpecialEditor(appState.mathTokens.length - 1);
+    });
+
+    $('btnAddPower').addEventListener('click', () => {
+      appState.mathTokens.push({ kind: 'power', base: 'x', exp: '2' });
+      updateMathPreviewUI();
+      openMathSpecialEditor(appState.mathTokens.length - 1);
+    });
+
+    $('btnAddSqrt').addEventListener('click', () => {
+      appState.mathTokens.push({ kind: 'sqrt', val: '16' });
+      updateMathPreviewUI();
+      openMathSpecialEditor(appState.mathTokens.length - 1);
+    });
+
+    $('btnMathBackspace').addEventListener('click', () => {
+      appState.mathTokens.pop();
+      $('mathSpecialEditor').classList.add('hidden');
+      updateMathPreviewUI();
+    });
+
+    $('btnMathClear').addEventListener('click', () => {
+      appState.mathTokens = [];
+      $('mathSpecialEditor').classList.add('hidden');
+      updateMathPreviewUI();
+    });
+
+    $('btnSpeakMathPreview').addEventListener('click', () => {
+      if (appState.mathTokens.length === 0) return;
+      speakTextFluent(mathTokensToSpeechText(appState.mathTokens));
+    });
+
+    function placeCurrentMathOnPage(pageIdx, x, y) {
+      if (appState.mathTokens.length === 0) {
+        showToast('先に数式ボタンで式を組み立ててください');
+        return;
+      }
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+      pageObj.annotations.push({
+        id: generateId(),
+        type: 'math',
+        x,
+        y,
+        tokens: JSON.parse(JSON.stringify(appState.mathTokens)),
+        spokenText: mathTokensToSpeechText(appState.mathTokens)
+      });
+      renderAllViews();
+      showToast('数式を貼り付けました（クリックで読み上げ・ドラッグで移動できます）');
+    }
+
+    $('btnPlaceMathOnPage').addEventListener('click', () => {
+      const pageIdx = appState.currentPageIndex;
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+      placeCurrentMathOnPage(pageIdx, pageObj.width * 0.3, pageObj.height * 0.45);
+    });
+
+    function renderAnnotationsForPane(paneType, pageIdx) {
+      const layer = $(`${paneType}AnnotationLayer`);
+      const pageObj = appState.pages[pageIdx];
+      if (!layer || !pageObj) return;
+      layer.innerHTML = '';
+
+      const paneZoom = paneType === 'pinned' ? appState.pinnedZoom : appState.primaryZoom;
+
+      (pageObj.annotations || []).forEach(anno => {
+        const el = document.createElement('div');
+        el.className = 'annotation-item group absolute cursor-move select-none rounded-lg px-2 py-1 border border-transparent hover:border-blue-400 transition';
+        el.style.left = `${anno.x * paneZoom}px`;
+        el.style.top = `${anno.y * paneZoom}px`;
+
+        if (anno.type === 'text') {
+          el.style.fontSize = `${Math.round(anno.fontSize * paneZoom)}px`;
+          el.style.color = anno.color;
+          el.style.backgroundColor = anno.bg;
+          if (anno.dir === 'vertical') {
+            el.style.writingMode = 'vertical-rl';
+          }
+          el.textContent = anno.text;
+        } else if (anno.type === 'math') {
+          el.style.fontSize = `${Math.round(30 * paneZoom)}px`;
+          el.style.backgroundColor = 'rgba(238, 242, 255, 0.92)';
+          el.style.color = '#1e1b4b';
+          el.classList.add('border-indigo-300', 'font-bold', 'flex', 'items-center', 'gap-1');
+          anno.tokens.forEach(tok => {
+            const sp = document.createElement('span');
+            if (tok.kind === 'char') sp.textContent = tok.val;
+            else if (tok.kind === 'frac') sp.innerHTML = `<span class="math-frac"><span class="math-frac-num">${tok.num}</span><span class="math-frac-den">${tok.den}</span></span>`;
+            else if (tok.kind === 'mixed') sp.innerHTML = `<span class="inline-flex items-center"><span>${tok.whole}</span><span class="math-frac"><span class="math-frac-num">${tok.num}</span><span class="math-frac-den">${tok.den}</span></span></span>`;
+            else if (tok.kind === 'power') sp.innerHTML = `<span>${tok.base}<sup>${tok.exp}</sup></span>`;
+            else if (tok.kind === 'sqrt') sp.innerHTML = `<span>√<span class="border-t-2 border-current">${tok.val}</span></span>`;
+            el.appendChild(sp);
+          });
+        }
+
+        // 読み上げ＆削除ミニボタン
+        const tools = document.createElement('div');
+        tools.className = 'hidden group-hover:flex items-center gap-1 absolute -top-7 left-0 bg-slate-900 text-white rounded-lg px-1.5 py-0.5 text-[11px] shadow-md z-30';
+        tools.innerHTML = `
+          <button type="button" class="anno-speak hover:text-amber-300 font-bold">🔊</button>
+          <button type="button" class="anno-del hover:text-rose-400 font-bold">✕</button>
+        `;
+        tools.querySelector('.anno-speak').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          speakTextFluent(anno.type === 'math' ? anno.spokenText : anno.text);
+        });
+        tools.querySelector('.anno-del').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          pageObj.annotations = pageObj.annotations.filter(a => a.id !== anno.id);
+          renderAllViews();
+        });
+        el.appendChild(tools);
+
+        // ドラッグ移動
+        el.addEventListener('pointerdown', (ev) => {
+          if (ev.target.closest('button')) return;
+          ev.stopPropagation();
+          const startClientX = ev.clientX;
+          const startClientY = ev.clientY;
+          const origX = anno.x;
+          const origY = anno.y;
+
+          const onMoveAnno = (mv) => {
+            anno.x = Math.max(0, origX + (mv.clientX - startClientX) / paneZoom);
+            anno.y = Math.max(0, origY + (mv.clientY - startClientY) / paneZoom);
+            el.style.left = `${anno.x * paneZoom}px`;
+            el.style.top = `${anno.y * paneZoom}px`;
+          };
+          const onUpAnno = () => {
+            window.removeEventListener('pointermove', onMoveAnno);
+            window.removeEventListener('pointerup', onUpAnno);
+          };
+          window.addEventListener('pointermove', onMoveAnno);
+          window.addEventListener('pointerup', onUpAnno);
+        });
+
+        layer.appendChild(el);
+      });
+    }
+
+    /**
+     * =========================================================================
+     * 10. 英語ネイティブ流暢読み上げ・数式読み上げ変換・句読点ポーズ＆カラオケ追従
+     * =========================================================================
+     */
+    function normalizeMathExpressionForSpeech(rawText, langCode) {
+      let s = rawText;
+      const isEn = langCode && langCode.startsWith('en');
+
+      if (isEn) {
+        // 英語での自然な数式読み上げ
+        s = s.replace(/(\d+)\s+(\d+)\/(\d+)/g, '$1 and $2 over $3');
+        s = s.replace(/(\d+)\/(\d+)/g, '$1 over $2');
+        s = s.replace(/([A-Za-z0-9]+)²/g, '$1 squared');
+        s = s.replace(/([A-Za-z0-9]+)³/g, '$1 cubed');
+        s = s.replace(/√(\d+)/g, 'square root of $1');
+        s = s.replace(/×/g, ' times ');
+        s = s.replace(/÷/g, ' divided by ');
+        s = s.replace(/＝|=/g, ' equals ');
+        return s;
+      }
+
+      // 日本語での自然な数式読み上げ
+      s = s.replace(/(\d+)\s+(\d+)\/(\d+)/g, '$1と$3分の$2');
+      s = s.replace(/(\d+)\/(\d+)/g, '$2分の$1');
+      s = s.replace(/([A-Za-z0-9]+)²/g, '$1の2乗');
+      s = s.replace(/([A-Za-z0-9]+)³/g, '$1の3乗');
+      s = s.replace(/\^(\d+)/g, 'の$1乗');
+      s = s.replace(/√([0-9A-Za-z]+)/g, 'ルート$1');
+      s = s.replace(/∠([A-Z]+)/g, 'かく$1');
+      s = s.replace(/△([A-Z]+)/g, 'さんかっけい$1');
+      s = s.replace(/∽/g, 'そうじ');
+      s = s.replace(/≡/g, 'ごうどう');
+      s = s.replace(/°/g, 'ど');
+      s = s.replace(/×/g, ' かける ');
+      s = s.replace(/÷/g, ' わる ');
+      s = s.replace(/＋|\+/g, ' たす ');
+      s = s.replace(/－/g, ' ひく ');
+      s = s.replace(/＝|=/g, ' は ');
+      return s;
+    }
+
+    function segmentBilingualChunks(rawText, mode) {
+      const pauseAtPunct = $('chkPauseAtPunctuation') ? $('chkPauseAtPunctuation').checked : true;
+
+      const splitByPunctuation = (textStr, lang) => {
+        if (!pauseAtPunct) {
+          return [{ text: normalizeMathExpressionForSpeech(textStr, lang), lang, pauseAfterMs: 0 }];
+        }
+        const rawSegments = textStr.split(/(?<=[。．！？!?、，,.])\s*/g).filter(s => s && s.trim().length > 0);
+        if (rawSegments.length === 0) {
+          return [{ text: normalizeMathExpressionForSpeech(textStr, lang), lang, pauseAfterMs: 0 }];
+        }
+        return rawSegments.map((seg, idx) => {
+          const isLast = idx === rawSegments.length - 1;
+          const isMajorStop = /[。．！？!?\.]$/.test(seg.trim());
+          const isMinorStop = /[、，,]$/.test(seg.trim());
+          const pauseAfterMs = isLast ? 0 : (isMajorStop ? 420 : (isMinorStop ? 240 : 120));
+          return {
+            text: normalizeMathExpressionForSpeech(seg, lang),
+            lang,
+            pauseAfterMs
+          };
+        });
+      };
+
+      if (mode === 'en-US' || mode === 'en-GB') {
+        return splitByPunctuation(rawText, mode);
+      }
+      if (mode === 'ja-JP') {
+        return splitByPunctuation(rawText, 'ja-JP');
+      }
+
+      const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(rawText);
+      const englishWords = rawText.match(/[A-Za-z]{2,}/g) || [];
+      if (!hasJapanese && englishWords.length > 0) {
+        return splitByPunctuation(rawText, 'en-US');
+      }
+
+      const chunks = [];
+      const parts = rawText.split(/([A-Za-z0-9\s.,!?;:'"()%°+-−×÷=<>]+)/g);
+      parts.forEach(part => {
+        if (!part || !part.trim()) return;
+        const isEngPart = /[A-Za-z]/.test(part);
+        const subChunks = splitByPunctuation(part, isEngPart ? 'en-US' : 'ja-JP');
+        chunks.push(...subChunks);
+      });
+      return chunks.length > 0 ? chunks : splitByPunctuation(rawText, 'ja-JP');
+    }
+
+    function populateEnglishVoicesDropdown() {
+      const select = $('englishVoiceSelect');
+      if (!select || !('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices() || [];
+      const enVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+      if (enVoices.length === 0) return;
+
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">英語音声: 自動（ネイティブ優先）</option>';
+      enVoices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voiceURI;
+        opt.textContent = `${v.name} (${v.lang})`;
+        if (v.voiceURI === currentVal) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    if ($('englishVoiceSelect')) {
+      $('englishVoiceSelect').addEventListener('change', (e) => {
+        appState.preferredEnglishVoiceURI = e.target.value;
+      });
+    }
+
+    function pickBestVoiceForLang(langCode) {
+      const voices = window.speechSynthesis.getVoices() || [];
+      if (langCode.startsWith('en')) {
+        if (appState.preferredEnglishVoiceURI) {
+          const manual = voices.find(v => v.voiceURI === appState.preferredEnglishVoiceURI);
+          if (manual) return manual;
+        }
+        const enVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+        const scoreVoice = (v) => {
+          let score = 0;
+          const n = v.name || '';
+          if (v.lang === langCode || v.lang.replace('_', '-') === langCode) score += 20;
+          if (/Natural|Neural|Google|Premium|Enhanced/i.test(n)) score += 30;
+          if (/Samantha|Daniel|Alex|Karen|Moira|Aria|Jenny|Guy|Ava/i.test(n)) score += 25;
+          if (!v.localService) score += 10;
+          return score;
+        };
+        enVoices.sort((a, b) => scoreVoice(b) - scoreVoice(a));
+        return enVoices[0] || null;
+      }
+      const jaVoices = voices.filter(v => v.lang === 'ja-JP' || (v.lang && v.lang.startsWith('ja')));
+      jaVoices.sort((a, b) => (/Natural|Google|Kyoko|Otoya|Nanami|Keita/i.test(b.name) ? 1 : 0) - (/Natural|Google|Kyoko|Otoya|Nanami|Keita/i.test(a.name) ? 1 : 0));
+      return jaVoices[0] || null;
+    }
+
+    function stopSpeech() {
+      appState.speechRunId++;
+      if (appState.fallbackHighlightTimer) {
+        clearInterval(appState.fallbackHighlightTimer);
+        appState.fallbackHighlightTimer = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      appState.activeSpokenWord = null;
+      drawOcrWordGuidesForPane('primary', appState.currentPageIndex);
+      if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
+        drawOcrWordGuidesForPane('pinned', appState.pinnedPageIndex);
+      }
+    }
+
+    function speakTextFluent(rawText, overrideRate = null, wordMap = null, targetPageIdx = null) {
+      if (!rawText || !rawText.trim()) return;
+      if (!('speechSynthesis' in window)) {
+        showToast('お使いのブラウザは音声読み上げに対応していません');
+        return;
+      }
+
+      stopSpeech();
+      const runId = appState.speechRunId;
+      const mode = $('speechLangMode').value;
+      const rate = overrideRate || appState.speechRate;
+      const chunks = segmentBilingualChunks(rawText, mode);
+
+      // カラオケハイライト用の累積文字マップ
+      let totalMappedChars = 0;
+      const mappedWords = (wordMap || []).map(w => {
+        const start = totalMappedChars;
+        totalMappedChars += w.text.length;
+        return { start, end: totalMappedChars, bbox: w.bbox };
+      });
+
+      const highlightAtCharOffset = (charPos) => {
+        if (mappedWords.length === 0 || targetPageIdx === null) return;
+        const found = mappedWords.find(mw => charPos >= mw.start && charPos <= mw.end) || mappedWords[mappedWords.length - 1];
+        if (found) {
+          appState.activeSpokenWord = { pageIdx: targetPageIdx, bbox: found.bbox };
+          drawOcrWordGuidesForPane('primary', appState.currentPageIndex);
+          if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
+            drawOcrWordGuidesForPane('pinned', appState.pinnedPageIndex);
+          }
+        }
+      };
+
+      let chunkIdx = 0;
+      let consumedCharsBeforeChunk = 0;
+
+      const speakNextChunk = () => {
+        if (runId !== appState.speechRunId) return;
+        if (chunkIdx >= chunks.length) {
+          if (appState.fallbackHighlightTimer) {
+            clearInterval(appState.fallbackHighlightTimer);
+            appState.fallbackHighlightTimer = null;
+          }
+          appState.activeSpokenWord = null;
+          drawOcrWordGuidesForPane('primary', appState.currentPageIndex);
+          if (appState.isSplitPinOpen && appState.pinnedPageIndex !== null) {
+            drawOcrWordGuidesForPane('pinned', appState.pinnedPageIndex);
+          }
+          return;
+        }
+
+        const chunk = chunks[chunkIdx];
+        const utt = new SpeechSynthesisUtterance(chunk.text);
+        utt.lang = chunk.lang;
+        utt.rate = rate;
+        const bestVoice = pickBestVoiceForLang(chunk.lang);
+        if (bestVoice) utt.voice = bestVoice;
+
+        let boundaryFired = false;
+        const chunkStartChar = consumedCharsBeforeChunk;
+        highlightAtCharOffset(chunkStartChar);
+
+        utt.onboundary = (ev) => {
+          if (runId !== appState.speechRunId) return;
+          boundaryFired = true;
+          highlightAtCharOffset(chunkStartChar + (ev.charIndex || 0));
+        };
+
+        // 日本語音声など onboundary が発火しない環境用のタイマー補完
+        if (appState.fallbackHighlightTimer) clearInterval(appState.fallbackHighlightTimer);
+        const startTime = Date.now();
+        const estDurationMs = Math.max(300, (chunk.text.length * 145) / rate);
+        appState.fallbackHighlightTimer = setInterval(() => {
+          if (runId !== appState.speechRunId || boundaryFired) return;
+          const progress = Math.min(0.98, (Date.now() - startTime) / estDurationMs);
+          highlightAtCharOffset(chunkStartChar + Math.floor(chunk.text.length * progress));
+        }, 90);
+
+        utt.onend = () => {
+          if (runId !== appState.speechRunId) return;
+          if (appState.fallbackHighlightTimer) {
+            clearInterval(appState.fallbackHighlightTimer);
+            appState.fallbackHighlightTimer = null;
+          }
+          consumedCharsBeforeChunk += chunk.text.length;
+          chunkIdx++;
+          const pauseMs = chunk.pauseAfterMs || 0;
+          if (pauseMs > 0) {
+            setTimeout(() => {
+              if (runId === appState.speechRunId) speakNextChunk();
+            }, pauseMs);
+          } else {
+            speakNextChunk();
+          }
+        };
+
+        utt.onerror = () => {
+          if (runId !== appState.speechRunId) return;
+          consumedCharsBeforeChunk += chunk.text.length;
+          chunkIdx++;
+          speakNextChunk();
+        };
+
+        window.speechSynthesis.speak(utt);
+      };
+
+      speakNextChunk();
+    }
+
+    function speakCurrentSelection(overrideRate = null) {
+      const sel = appState.selection;
+      if (!sel || !sel.orderedWords) return;
+      const s = Math.min(sel.startIdx, sel.endIdx);
+      const e = Math.max(sel.startIdx, sel.endIdx);
+      const slice = sel.orderedWords.slice(s, e + 1);
+      const txt = getSelectedWordsText();
+      $('spokenTextInput').value = txt;
+      speakTextFluent(txt, overrideRate, slice, sel.pageIdx);
+    }
+
+    function speakWholePage(pageIdx) {
+      const pageObj = appState.pages[pageIdx];
+      if (!pageObj) return;
+      if (!pageObj.ocrDone || !pageObj.ocrWords || pageObj.ocrWords.length === 0) {
+        showToast('このページには読み上げる文字がありません');
+        return;
+      }
+      const ordered = getOrderedWordsForPage(pageObj);
+      appState.selection = {
+        paneType: pageIdx === appState.pinnedPageIndex ? 'pinned' : 'primary',
+        pageIdx,
+        startIdx: 0,
+        endIdx: ordered.length - 1,
+        orderedWords: ordered
+      };
+      updateSelectionTextAndRedraw();
+      speakCurrentSelection();
+    }
+
+    $('btnReadWholePrimary').addEventListener('click', () => speakWholePage(appState.currentPageIndex));
+    $('btnReadWholePinned').addEventListener('click', () => {
+      if (appState.pinnedPageIndex !== null) speakWholePage(appState.pinnedPageIndex);
+    });
+
+    $('btnReplayText').addEventListener('click', () => {
+      const txt = $('spokenTextInput').value.trim();
+      if (txt) speakTextFluent(txt);
+    });
+
+    $('btnStopSpeak').addEventListener('click', () => stopSpeech());
+
+    $('rateSlider').addEventListener('input', (e) => {
+      appState.speechRate = parseFloat(e.target.value);
+      $('rateLabel').textContent = `${appState.speechRate.toFixed(1)}x`;
+    });
+
+    /**
+     * =========================================================================
+     * 11. LD見やすさ補助（カラーオーバーレイ＆リーディングルーラー）
+     * =========================================================================
+     */
+    $('btnToggleLdAssist').addEventListener('click', () => {
+      $('ldAssistBar').classList.toggle('hidden');
+      $('ldAssistBar').classList.toggle('flex');
+    });
+
+    document.querySelectorAll('.tint-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.tintColor = btn.dataset.tint;
+        document.querySelectorAll('.tint-btn').forEach(b => b.classList.remove('border-2', 'border-purple-600'));
+        btn.classList.add('border-2', 'border-purple-600');
+        renderAllViews();
+      });
+    });
+
+    document.querySelectorAll('.ruler-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appState.rulerMode = btn.dataset.ruler;
+        document.querySelectorAll('.ruler-btn').forEach(b => b.classList.remove('border-2', 'border-purple-600'));
+        btn.classList.add('border-2', 'border-purple-600');
+        const ruler = $('readingRulerEl');
+        if (appState.rulerMode === 'off') {
+          ruler.classList.add('hidden');
+        } else {
+          ruler.classList.remove('hidden');
+        }
+      });
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (appState.rulerMode === 'off') return;
+      const ruler = $('readingRulerEl');
+      if (appState.rulerMode === 'horizontal') {
+        ruler.style.left = '0px';
+        ruler.style.top = `${e.clientY - 18}px`;
+        ruler.style.width = '100vw';
+        ruler.style.height = '36px';
+      } else {
+        ruler.style.left = `${e.clientX - 20}px`;
+        ruler.style.top = '0px';
+        ruler.style.width = '40px';
+        ruler.style.height = '100vh';
+      }
+    });
+
+    /**
+     * =========================================================================
+     * 12. カメラ撮影機能
+     * =========================================================================
+     */
+    let activeCameraStream = null;
+    let cameraFacingMode = 'environment';
+
+    async function openCameraModal() {
+      $('cameraModal').classList.remove('hidden');
+      $('cameraVideo').classList.remove('hidden');
+      $('cameraFallbackBox').classList.add('hidden');
+
+      try {
+        if (activeCameraStream) {
+          activeCameraStream.getTracks().forEach(t => t.stop());
+        }
+        activeCameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacingMode },
+          audio: false
+        });
+        $('cameraVideo').srcObject = activeCameraStream;
+      } catch (err) {
+        $('cameraVideo').classList.add('hidden');
+        $('cameraFallbackBox').classList.remove('hidden');
+      }
+    }
+
+    function closeCameraModal() {
+      $('cameraModal').classList.add('hidden');
+      if (activeCameraStream) {
+        activeCameraStream.getTracks().forEach(t => t.stop());
+        activeCameraStream = null;
+      }
+    }
+
+    function captureCameraFrame(mode) {
+      const video = $('cameraVideo');
+      if (!video || !video.videoWidth) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+
+      const newPage = {
+        id: generateId(),
+        baseCanvas: canvas,
+        inkStrokes: [],
+        width: canvas.width,
+        height: canvas.height,
+        ocrWords: [],
+        ocrDone: false,
+        pinned: false,
+        annotations: []
+      };
+
+      if (mode === 'new' || appState.pages.length === 0) {
+        appState.pages = [newPage];
+        appState.currentPageIndex = 0;
+        pendingStartIndex = 0;
+      } else {
+        pendingStartIndex = appState.pages.length;
+        appState.pages.push(newPage);
+        appState.currentPageIndex = pendingStartIndex;
+      }
+
+      closeCameraModal();
+      activateWorkspaceUI();
+      renderAllViews();
+      $('directionChoiceModal').classList.remove('hidden');
+    }
+
+    $('btnOpenCamera').addEventListener('click', openCameraModal);
+    $('btnCameraWelcome').addEventListener('click', openCameraModal);
+    $('btnCloseCamera').addEventListener('click', closeCameraModal);
+    $('btnSwitchCamera').addEventListener('click', () => {
+      cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+      openCameraModal();
+    });
+    $('btnSnapNewDoc').addEventListener('click', () => captureCameraFrame('new'));
+    $('btnSnapAppendPage').addEventListener('click', () => captureCameraFrame('append'));
+    $('cameraNativeFallbackInput').addEventListener('change', (e) => {
+      closeCameraModal();
+      handleFilesSelected(e.target.files, appState.pages.length > 0 ? 'append' : 'new');
+      e.target.value = '';
+    });
+
+    /**
+     * =========================================================================
+     * 13. 音声リスト初期化 ＆ PNG / PDF 保存書き出し機能
+     * =========================================================================
+     */
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      populateEnglishVoicesDropdown();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+        populateEnglishVoicesDropdown();
+      };
+    }
+
+    $('btnExportModal').addEventListener('click', () => {
+      $('exportModal').classList.remove('hidden');
+    });
+    $('btnCloseExport').addEventListener('click', () => {
+      $('exportModal').classList.add('hidden');
+    });
+
+    function renderCompositePageCanvas(pageObj) {
+      const out = document.createElement('canvas');
+      out.width = pageObj.width;
+      out.height = pageObj.height;
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(pageObj.baseCanvas, 0, 0);
+
+      // 手書きストロークを合成
+      if (pageObj.inkStrokes && pageObj.inkStrokes.length > 0) {
+        const tempInk = document.createElement('canvas');
+        tempInk.width = pageObj.width;
+        tempInk.height = pageObj.height;
+        const ictx = tempInk.getContext('2d');
+        pageObj.inkStrokes.forEach(stroke => {
+          if (!stroke.points || stroke.points.length === 0) return;
+          ictx.save();
+          ictx.lineCap = 'round';
+          ictx.lineJoin = 'round';
+          if (stroke.kind === 'eraser') {
+            ictx.globalCompositeOperation = 'destination-out';
+            ictx.strokeStyle = 'rgba(0,0,0,1)';
+            ictx.lineWidth = stroke.width * 3.2;
+          } else if (stroke.kind === 'marker') {
+            ictx.globalCompositeOperation = 'multiply';
+            ictx.globalAlpha = 0.36;
+            ictx.strokeStyle = stroke.color;
+            ictx.lineWidth = stroke.width * 3.4;
+          } else {
+            ictx.globalCompositeOperation = 'source-over';
+            ictx.strokeStyle = stroke.color;
+            ictx.lineWidth = stroke.width;
+          }
+          ictx.beginPath();
+          ictx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          for (let i = 1; i < stroke.points.length; i++) {
+            ictx.lineTo(stroke.points[i].x, stroke.points[i].y);
+          }
+          ictx.stroke();
+          ictx.restore();
+        });
+        ctx.drawImage(tempInk, 0, 0);
+      }
+
+      // テキスト・数式注釈を合成
+      (pageObj.annotations || []).forEach(anno => {
+        ctx.save();
+        if (anno.type === 'text') {
+          ctx.font = `bold ${anno.fontSize}px "BIZ UDPGothic", sans-serif`;
+          ctx.fillStyle = anno.color;
+          ctx.textBaseline = 'top';
+          ctx.fillText(anno.text, anno.x, anno.y);
+        } else if (anno.type === 'math') {
+          ctx.font = 'bold 28px "BIZ UDPGothic", sans-serif';
+          ctx.fillStyle = '#1e1b4b';
+          ctx.textBaseline = 'top';
+          ctx.fillText(anno.spokenText || '', anno.x, anno.y);
+        }
+        ctx.restore();
+      });
+
+      return out;
+    }
+
+    $('btnDownloadCurrentPng').addEventListener('click', () => {
+      const pageObj = appState.pages[appState.currentPageIndex];
+      if (!pageObj) return;
+      const comp = renderCompositePageCanvas(pageObj);
+      const link = document.createElement('a');
+      link.download = `yomiyomi-page-${appState.currentPageIndex + 1}.png`;
+      link.href = comp.toDataURL('image/png');
+      link.click();
+      $('exportModal').classList.add('hidden');
+      showToast('PNG画像を保存しました');
+    });
+
+    $('btnDownloadAllPdf').addEventListener('click', () => {
+      if (appState.pages.length === 0) return;
+      const { jsPDF } = window.jspdf;
+      let pdf = null;
+      appState.pages.forEach((pageObj, idx) => {
+        const comp = renderCompositePageCanvas(pageObj);
+        const orientation = comp.width > comp.height ? 'l' : 'p';
+        if (idx === 0) {
+          pdf = new jsPDF({ orientation, unit: 'px', format: [comp.width, comp.height] });
+        } else {
+          pdf.addPage([comp.width, comp.height], orientation);
+        }
+        pdf.addImage(comp.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, comp.width, comp.height);
+      });
+      if (pdf) {
+        pdf.save('yomiyomi-workbook.pdf');
+        $('exportModal').classList.add('hidden');
+        showToast('全ページのPDFを保存しました');
+      }
+    });
+  </script>
+</body>
+</html>
